@@ -1,0 +1,11 @@
+[Unit]
+Description=Publish the latest BPMN Forge build
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=bpmn-deploy
+StateDirectory=bpmn-forge
+ExecStart=/etc/bpmn-forge/publish.sh
+TimeoutStartSec=90

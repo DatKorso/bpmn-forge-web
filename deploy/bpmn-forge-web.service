@@ -1,0 +1,15 @@
+[Unit]
+Description=BPMN Forge Web (PM2)
+After=network.target
+
+[Service]
+User=bpmn-deploy
+StateDirectory=bpmn-forge
+WorkingDirectory=/var/lib/bpmn-forge
+Environment=PATH=/opt/bpmn-forge-runtime/bin:/usr/bin:/bin
+Environment=PM2_HOME=/var/lib/bpmn-forge/.pm2
+ExecStart=/opt/bpmn-forge-runtime/bin/pm2-runtime start /etc/bpmn-forge/ecosystem.config.cjs
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

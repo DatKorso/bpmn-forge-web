@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     name: Test and build
@@ -28,7 +32,9 @@ jobs:
       - run: npm run build
       - name: Archive production build
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        run: tar -czf bpmn-forge.tar.gz -C dist .
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > dist/deployment-version.txt
+          tar -czf bpmn-forge.tar.gz -C dist .
       - uses: actions/upload-artifact@v7
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:
@@ -45,44 +51,55 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
+    permissions:
+      contents: write
     concurrency:
       group: production-vps
       queue: max
     steps:
-      - name: Check whether this commit is still on top of main
-        id: revision
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
-          if [[ "$main_sha" == "$GITHUB_SHA" ]]; then
-            echo 'current=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'Skipping deployment because main has moved.'
-          fi
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
-        if: steps.revision.outputs.current == 'true'
         with:
           name: bpmn-forge
-      - name: Publish over SSH
-        if: steps.revision.outputs.current == 'true'
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ vars.VPS_PORT || '22' }}
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          path: ${{ runner.temp }}/bpmn-forge
+      - name: Publish build for the VPS
+        id: publish
         run: |
-          : "${VPS_HOST:?Set the VPS_HOST environment secret}"
-          : "${VPS_SSH_KEY:?Set the VPS_SSH_KEY environment secret}"
-          : "${VPS_KNOWN_HOSTS:?Set the VPS_KNOWN_HOSTS environment secret}"
+          main_sha="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+          if [[ "$main_sha" != "$GITHUB_SHA" ]]; then
+            echo 'Skipping deployment because main has moved.'
+            exit 0
+          fi
 
-          ssh_dir="$(mktemp -d)"
-          trap 'rm -rf -- "$ssh_dir"' EXIT
-          umask 077
-          printf '%s\n' "$VPS_SSH_KEY" > "$ssh_dir/key"
-          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          deploy_ref=refs/heads/production-build
+          previous="$(git ls-remote origin "$deploy_ref" | cut -f1)"
+          parent=()
+          if [[ -n "$previous" ]]; then
+            git fetch --no-tags --depth=1 origin "$previous"
+            parent=(-p "$previous")
+          fi
 
-          ssh -T -i "$ssh_dir/key" -l bpmn-deploy -p "$VPS_PORT" \
-            -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=15 \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$ssh_dir/known_hosts" \
-            -- "$VPS_HOST" bpmn-forge-publish < bpmn-forge.tar.gz
+          export GIT_INDEX_FILE="$RUNNER_TEMP/bpmn-forge.index"
+          git read-tree --empty
+          bundle="$(git hash-object -w "$RUNNER_TEMP/bpmn-forge/bpmn-forge.tar.gz")"
+          git update-index --add --cacheinfo "100644,$bundle,bpmn-forge.tar.gz"
+          tree="$(git write-tree)"
+          commit="$(git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit-tree "$tree" "${parent[@]}" -m "Deploy $GITHUB_SHA")"
+          git push origin "$commit:$deploy_ref"
+          echo 'published=true' >> "$GITHUB_OUTPUT"
+      - name: Verify public deployment
+        if: steps.publish.outputs.published == 'true'
+        run: |
+          for attempt in {1..24}; do
+            deployed="$(curl --fail --silent --max-time 5 \
+              "https://bplm-forge.korso.cc/deployment-version.txt?sha=$GITHUB_SHA")" || deployed=
+            if [[ "$deployed" == "$GITHUB_SHA" ]]; then
+              echo "Verified deployment of $GITHUB_SHA"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "The VPS did not serve revision $GITHUB_SHA in time." >&2
+          exit 1
