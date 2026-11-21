@@ -9,6 +9,7 @@ import autoAlign from './auto-align.js';
 import { reportAlignment, reportOperation, resetAlignment } from './footer.js';
 import { protectConditionalFlows, renderProperties } from './properties.js';
 import russian from './russian.js';
+import { reportGapValidity, updateToolTooltip } from './toolbar.js';
 import './style.css';
 
 const EMPTY_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -28,6 +29,7 @@ const gapX = byId('gap-x');
 const gapY = byId('gap-y');
 const alignSelection = byId('align-selection');
 const selectionReason = byId('selection-reason');
+const documentName = byId('document-name');
 const propertiesFields = byId('properties-fields');
 let modeler;
 let busy = false;
@@ -44,7 +46,7 @@ function updateControls() {
   const reason = busy || !modeler ? 'Дождитесь загрузки схемы.' : modeler.get('autoAlign').selection(selection).reason;
   alignSelection.setAttribute('aria-disabled', String(Boolean(reason)));
   selectionReason.textContent = reason ?? '';
-  selectionReason.hidden = !reason;
+  updateToolTooltip();
   renderProperties(modeler, selection);
   propertiesFields.inert = busy;
 
@@ -100,7 +102,8 @@ async function loadDiagram(readXML, nextFilename, message) {
     modeler = next;
     host.classList.remove('staging');
     filename = nextFilename;
-    byId('document-name').textContent = nextFilename.replace(/\.bpmn$/i, '');
+    documentName.textContent = nextFilename.replace(/\.bpmn$/i, '');
+    documentName.title = nextFilename;
     resetAlignment();
     reportOperation(warnings.length ? `${message} Предупреждения импорта: ${warnings.length}.` : message);
   } catch (error) {
@@ -166,7 +169,7 @@ const alignment = byId('alignment');
 alignment.addEventListener('submit', (event) => event.preventDefault());
 const alignmentGaps = () => ({ x: gapX.valueAsNumber, y: gapY.valueAsNumber });
 byId('align').addEventListener('click', () => {
-  if (busy || !modeler || !alignment.reportValidity()) return;
+  if (busy || !modeler || !reportGapValidity()) return;
 
   try {
     const { moved, resized, rerouted, skipped } = modeler.get('autoAlign').run(alignmentGaps());
@@ -182,7 +185,7 @@ byId('align').addEventListener('click', () => {
 });
 
 alignSelection.addEventListener('click', () => {
-  if (alignSelection.getAttribute('aria-disabled') === 'true' || !alignment.reportValidity()) return;
+  if (alignSelection.getAttribute('aria-disabled') === 'true' || !reportGapValidity()) return;
   try {
     const selection = modeler.get('selection').get();
     const { moved, rerouted, reason } = modeler.get('autoAlign').runSelection(selection, alignmentGaps());

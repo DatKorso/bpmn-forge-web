@@ -8,35 +8,73 @@
   </head>
   <body>
     <header class="header">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <h1>BPMN-редактор</h1>
-      </div>
-      <span id="document-name" class="document-name" title="Текущая схема">Новая схема</span>
-      <button id="toggle-properties" class="panel-toggle" type="button" aria-expanded="false"
-          aria-controls="properties">Свойства</button>
+      <svg class="brand-mark" viewBox="0 0 32 32" role="img" aria-label="BPMN Forge">
+        <path d="M12 16h4m0-6v12m0-12h4m-4 12h4" />
+        <rect x="6" y="13" width="6" height="6" rx="1.5" />
+        <rect x="20" y="7" width="6" height="6" rx="1.5" />
+        <rect x="20" y="19" width="6" height="6" rx="1.5" />
+      </svg>
+      <h1 id="document-name" class="document-name" title="Новая схема">Новая схема</h1>
+      <span class="tool">
+        <button id="toggle-properties" class="tool-button" type="button" aria-label="Свойства"
+            aria-expanded="false" aria-controls="properties">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M15 5v14" /></svg>
+        </button>
+      </span>
     </header>
 
     <section class="toolbar" aria-label="Действия со схемой">
-      <div class="tools files" role="group" aria-label="Файл">
-        <button id="new" type="button" disabled>Новая схема</button>
-        <button id="open" type="button" disabled>Открыть BPMN</button>
-        <button id="download" type="button" disabled>Скачать BPMN</button>
-        <input id="file" type="file" accept=".bpmn,.xml,application/xml,text/xml" hidden>
-      </div>
-      <div class="tools history" role="group" aria-label="История действий">
-        <button id="undo" type="button" disabled><span class="history-icon" aria-hidden="true">↶</span> Отменить</button>
-        <button id="redo" type="button" disabled><span class="history-icon" aria-hidden="true">↷</span> Повторить</button>
+      <div class="tools edit-tools">
+        <div class="tools" role="group" aria-label="Файл">
+          <span class="tool">
+            <button id="new" class="tool-button" type="button" aria-label="Создать схему" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10l-7-7Zm0 0v7h7m-8 3v5m-2.5-2.5h5" /></svg>
+            </button>
+          </span>
+          <span class="tool">
+            <button id="open" class="tool-button" type="button" aria-label="Открыть BPMN" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18V6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v2M3 18a2 2 0 0 0 2 2h13a2 2 0 0 0 2-1.5l2-6.5a1.5 1.5 0 0 0-1.5-2H7a2 2 0 0 0-2 1.5L3 18Z" /></svg>
+            </button>
+          </span>
+          <span class="tool">
+            <button id="download" class="tool-button" type="button" aria-label="Скачать BPMN" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" /></svg>
+            </button>
+          </span>
+          <input id="file" type="file" accept=".bpmn,.xml,application/xml,text/xml" hidden>
+        </div>
+        <div class="tools history" role="group" aria-label="История действий">
+          <span class="tool">
+            <button id="undo" class="tool-button" type="button" aria-label="Отменить" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5-5 5 5 5m-5-5h11a5 5 0 0 1 0 10h-2" /></svg>
+            </button>
+          </span>
+          <span class="tool">
+            <button id="redo" class="tool-button" type="button" aria-label="Повторить" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 5 5 5-5 5m5-5H10a5 5 0 0 0 0 10h2" /></svg>
+            </button>
+          </span>
+        </div>
       </div>
       <form id="alignment" class="tools alignment" aria-label="Выравнивание и минимальные отступы">
-        <span class="gap-label">Мин. отступы</span>
-        <label>По горизонтали <input id="gap-x" type="number" min="0" max="9007199254740991" step="1" value="80" required></label>
-        <label>По вертикали <input id="gap-y" type="number" min="0" max="9007199254740991" step="1" value="60" required></label>
-        <button id="align" class="primary" type="button" disabled>Автовыровнять</button>
-        <span class="selection-action">
-          <button id="align-selection" type="button" aria-disabled="true" aria-describedby="selection-reason">Выровнять выделение</button>
-          <span id="selection-reason" class="selection-reason">Выберите пул, дорожку, раскрытый подпроцесс или несколько фигур.</span>
+        <span class="tool">
+          <button id="toggle-gaps" class="tool-button" type="button" aria-label="Отступы"
+              aria-expanded="false" aria-controls="gap-settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v14m16-14v14M8 12h8m-6-2-2 2 2 2m4-4 2 2-2 2" /></svg>
+          </button>
         </span>
+        <div id="gap-settings" class="gap-settings" hidden>
+          <label>По горизонтали <input id="gap-x" type="number" min="0" max="9007199254740991" step="1" value="80" required></label>
+          <label>По вертикали <input id="gap-y" type="number" min="0" max="9007199254740991" step="1" value="60" required></label>
+        </div>
+        <span class="tool">
+          <button id="align-selection" class="tool-button" type="button" aria-label="Выровнять выделение"
+              aria-disabled="true" aria-describedby="selection-reason">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4M8 9h8m-8 3h8m-8 3h8" /></svg>
+          </button>
+          <span id="selection-reason" hidden>Выберите пул, дорожку, раскрытый подпроцесс или несколько фигур.</span>
+        </span>
+        <button id="align" class="primary" type="button" disabled>Автовыровнять</button>
       </form>
     </section>
 
@@ -100,6 +138,7 @@
     </footer>
 
     <div id="status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="tool-tooltip" class="tool-tooltip" aria-hidden="true" hidden></div>
 
     <dialog id="messages" class="footer-dialog" aria-labelledby="messages-title">
       <header>
