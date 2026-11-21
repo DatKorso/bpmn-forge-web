@@ -179,7 +179,18 @@ button, input, textarea { font: inherit; }
   color: var(--control-text);
   font-size: 13px;
 }
-.gap-settings input { width: 64px; padding: 0 var(--space-sm); font-variant-numeric: tabular-nums; }
+
+.gap-settings fieldset {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.gap-settings input[type="checkbox"] { margin: 0; width: 16px; height: 16px; accent-color: var(--accent); }
+.gap-settings input[type="number"] { width: 64px; padding: 0 var(--space-sm); font-variant-numeric: tabular-nums; }
 .gap-settings input:invalid { border-color: var(--danger); }
 
 .tool-tooltip {

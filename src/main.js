@@ -29,6 +29,10 @@ const gapX = byId('gap-x');
 const gapY = byId('gap-y');
 const maxGapX = byId('max-gap-x');
 const maxGapY = byId('max-gap-y');
+const useUniformGap = byId('use-uniform-gap');
+const uniformGap = byId('uniform-gap');
+const rangeGapSettings = byId('gap-range');
+const uniformGapSettings = byId('gap-uniform');
 const alignSelection = byId('align-selection');
 const selectionReason = byId('selection-reason');
 const documentName = byId('document-name');
@@ -156,12 +160,21 @@ byId('download').addEventListener('click', async () => {
   }
 });
 
+function validateRequiredGap(input) {
+  const value = input.valueAsNumber;
+  const valid = Number.isSafeInteger(value) && value >= 0;
+  input.setCustomValidity(valid ? '' : 'Введите целое число от нуля.');
+  return valid;
+}
+
 function validateGaps() {
+  if (useUniformGap.checked) {
+    validateRequiredGap(uniformGap);
+    return;
+  }
+
   for (const [min, max] of [[gapX, maxGapX], [gapY, maxGapY]]) {
-    const value = min.valueAsNumber;
-    const validMin = Number.isSafeInteger(value) && value >= 0;
-    min.setCustomValidity(validMin ? '' : 'Введите целое число от нуля.');
-    max.min = validMin ? String(value) : '0';
+    max.min = validateRequiredGap(min) ? String(min.valueAsNumber) : '0';
     const optional = !max.value && !max.validity.badInput;
     const validMax = Number.isSafeInteger(max.valueAsNumber) && max.valueAsNumber >= Number(max.min);
     max.setCustomValidity(optional || validMax ? '' : 'Введите целое число не меньше минимума.');
@@ -171,17 +184,35 @@ function validateGaps() {
 const alignment = byId('alignment');
 alignment.addEventListener('submit', (event) => event.preventDefault());
 byId('gap-settings').addEventListener('input', validateGaps);
+
+function updateGapMode() {
+  const uniform = useUniformGap.checked;
+  rangeGapSettings.hidden = rangeGapSettings.disabled = uniform;
+  uniformGapSettings.hidden = uniformGapSettings.disabled = !uniform;
+}
+
+useUniformGap.addEventListener('change', updateGapMode);
+updateGapMode();
+
 function checkGaps() {
   validateGaps();
   return reportGapValidity();
 }
 
-const alignmentGaps = () => ({
-  x: gapX.valueAsNumber,
-  y: gapY.valueAsNumber,
-  maxX: maxGapX.value ? maxGapX.valueAsNumber : undefined,
-  maxY: maxGapY.value ? maxGapY.valueAsNumber : undefined
-});
+function alignmentGaps() {
+  if (useUniformGap.checked) {
+    const gap = uniformGap.valueAsNumber;
+    return { x: gap, y: gap, maxX: gap, maxY: gap };
+  }
+
+  return {
+    x: gapX.valueAsNumber,
+    y: gapY.valueAsNumber,
+    maxX: maxGapX.value ? maxGapX.valueAsNumber : undefined,
+    maxY: maxGapY.value ? maxGapY.valueAsNumber : undefined
+  };
+}
+
 byId('align').addEventListener('click', () => {
   if (busy || !modeler || !checkGaps()) return;
 

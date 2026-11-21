@@ -64,10 +64,16 @@
           </button>
         </span>
         <div id="gap-settings" class="gap-settings" hidden>
-          <label>Минимум по горизонтали <input id="gap-x" type="number" min="0" max="9007199254740991" step="1" value="60" required></label>
-          <label>Минимум по вертикали <input id="gap-y" type="number" min="0" max="9007199254740991" step="1" value="40" required></label>
-          <label>Максимум по горизонтали <input id="max-gap-x" type="number" min="60" max="9007199254740991" step="1" value="120"></label>
-          <label>Максимум по вертикали <input id="max-gap-y" type="number" min="40" max="9007199254740991" step="1" value="80"></label>
+          <label>Единый отступ <input id="use-uniform-gap" type="checkbox"></label>
+          <fieldset id="gap-uniform" hidden disabled>
+            <label>Отступ по обеим осям <input id="uniform-gap" type="number" min="0" max="9007199254740991" step="1" value="80" required></label>
+          </fieldset>
+          <fieldset id="gap-range">
+            <label>Минимум по горизонтали <input id="gap-x" type="number" min="0" max="9007199254740991" step="1" value="60" required></label>
+            <label>Минимум по вертикали <input id="gap-y" type="number" min="0" max="9007199254740991" step="1" value="40" required></label>
+            <label>Максимум по горизонтали <input id="max-gap-x" type="number" min="60" max="9007199254740991" step="1" value="120"></label>
+            <label>Максимум по вертикали <input id="max-gap-y" type="number" min="40" max="9007199254740991" step="1" value="80"></label>
+          </fieldset>
         </div>
         <span class="tool">
           <button id="align-selection" class="tool-button" type="button" aria-label="Выровнять выделение"
