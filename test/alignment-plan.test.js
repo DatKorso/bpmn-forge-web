@@ -93,6 +93,56 @@ test('keeps the main row straight and connects bypass branches with one bend eac
   assert.deepEqual(routeCost(routes.values()).slice(0, 3), [0, 0, 4]);
 });
 
+test('keeps both straight branches when an exclusive gateway also bypasses a lower task', () => {
+  for (const spacing of [{ x: 60, y: 40, maxX: 120, maxY: 80 }, { x: 80, y: 80, maxX: 80, maxY: 80 }]) {
+    const d = diagram();
+    const pool = d.add('Pool', box(0, 0, 720, 405), { kind: 'pool', horizontal: true, header: 30 });
+    const add = (id, bounds, type = 'bpmn:Task') => d.add(id, bounds, { scope: pool, type });
+    const start = add('Start', box(52, 182, 36, 36), 'bpmn:StartEvent');
+    const split = add('Split', box(155, 175, 50, 50), 'bpmn:ExclusiveGateway');
+    const middleFirst = add('MiddleFirst', box(270, 160, 100, 80));
+    const middleLast = add('MiddleLast', box(430, 160, 100, 80));
+    const upper = add('Upper', box(430, 20, 100, 80));
+    const lowerFirst = add('LowerFirst', box(270, 265, 100, 80));
+    const lowerLast = add('LowerLast', box(430, 265, 100, 80));
+    const end = add('End', box(592, 182, 36, 36), 'bpmn:EndEvent');
+    const straight = [
+      d.connect(start, split), d.connect(split, middleFirst), d.connect(middleFirst, middleLast),
+      d.connect(middleLast, end), d.connect(upper, middleLast), d.connect(lowerFirst, lowerLast)
+    ];
+    d.connect(split, upper);
+    d.connect(split, lowerFirst);
+    d.connect(lowerLast, end);
+    d.connect(split, lowerLast);
+
+    const plan = planAlignment(d, spacing);
+    assert.deepEqual(plan.skipped, []);
+    for (const flow of straight) {
+      assert.equal(plan.routes.get(flow).length, 2, flow.id);
+    }
+    for (const { source, target } of d.edges) {
+      const from = finalBox(plan, source);
+      const to = finalBox(plan, target);
+      if (source === upper) {
+        assert.equal(center(from, 'x'), center(to, 'x'));
+      } else {
+        assert.ok(to.x - (from.x + from.width) >= spacing.x, source.id + '-' + target.id);
+      }
+    }
+    for (const [flow, points] of plan.routes) {
+      assert.ok(points.slice(1).every((point, index) => point.x >= points[index].x), flow.id);
+    }
+    assert.ok(finalBox(plan, upper).y < finalBox(plan, middleLast).y);
+    assert.ok(finalBox(plan, lowerLast).y > finalBox(plan, middleLast).y);
+
+    apply(plan);
+    const repeated = planAlignment(d, spacing);
+    assert.deepEqual(repeated.skipped, []);
+    assert.equal(repeated.boxes.size, 0);
+    assert.deepEqual(repeated.routes, plan.routes);
+  }
+});
+
 test('straightens a chaotically placed default path and reduces crossings at a split and merge', () => {
   const d = diagram();
   const split = d.add('Split', box(260, 160, 50, 50));
@@ -242,7 +292,7 @@ test('swaps complete neighboring branches when the routed diagram scores better'
   const d = diagram();
   const figures = [
     [321, 124], [43, 174], [245, 144], [335, 82], [217, 4],
-    [371, 294], [397, 312], [199, 282], [129, 284], [299, 238]
+    [311, 294], [397, 312], [199, 282], [129, 284], [299, 238]
   ].map(([x, y], index) => d.add('N' + index, index === 0 || index === 9 ? box(x, y, 50, 50) : box(x, y)));
   for (const [first, second] of [[1, 2], [3, 4], [5, 6], [7, 8]]) {
     d.connect(figures[0], figures[first], first === 1);

@@ -230,8 +230,14 @@ function clusterRows(units, flows, candidates, columns) {
     }
     return false;
   }
-  const bypasses = new Set(forward.filter(bypassesPath));
   const rise = ({ source, target }) => Math.abs(center(target.shape, 'y') - center(source.shape, 'y'));
+  const straightContinuations = new Set(forward.filter((flow) =>
+    rise(flow) === 0 && center(flow.source.shape, 'x') < center(flow.target.shape, 'x'))
+    .map(({ source }) => source));
+  // Give bypasses priority when choosing a row for staggered branches.
+  // An existing straight continuation already establishes the split's row.
+  const bypasses = new Set(forward.filter((flow) =>
+    (rise(flow) === 0 || !straightContinuations.has(flow.source)) && bypassesPath(flow)));
   forward.sort((a, b) => Number(!!b.isDefault) - Number(!!a.isDefault) ||
     Number(bypasses.has(b)) - Number(bypasses.has(a)) || rise(a) - rise(b) ||
     compareIds(a.id, b.id)

@@ -165,10 +165,6 @@ function gridCoordinates(obstacles, ports, bounds, axis) {
     .sort((a, b) => a - b);
 }
 
-function segmentCost(a, b, direction, previousDirection, occupied) {
-  return [...interactionCost([a, b], occupied, true), Number(direction !== previousDirection), length(a, b)];
-}
-
 function addCost(a, b) {
   return a.map((value, index) => value + b[index]);
 }
@@ -179,17 +175,23 @@ function routeFlow(flow, bounds, obstacles, occupied) {
   const ends = getPorts(target, bounds, obstacles);
   if (!starts.length || !ends.length) return null;
 
+  const progressAxis = flow.vertical ? 'y' : 'x';
+  const sourceEnd = flow.vertical ? bottom(source) : right(source);
+  const advances = !flow.back && sourceEnd <= target[progressAxis];
+  function segmentCost(a, b, bend, includeStart) {
+    const [crossings, overlap] = interactionCost([a, b], occupied, includeStart);
+    // Prefer a forward path even when outgoing branches need to share a stem.
+    const retreat = advances ? Math.max(0, a[progressAxis] - b[progressAxis]) : 0;
+    return [crossings, retreat, overlap, Number(bend), length(a, b)];
+  }
+
+  const emptyCost = [0, 0, 0, 0, 0];
   let winner;
   function consider(points) {
     if (points.length > 3 || !acceptsRoute(points, flow, bounds, obstacles)) return;
     const path = segments(points);
-    const score = [0, 0, path.length - 1, 0];
-    for (const segment of path) {
-      const [crossings, overlap] = interactionCost(segment, occupied);
-      score[0] += crossings;
-      score[1] += overlap;
-      score[3] += length(...segment);
-    }
+    const score = path.reduce((cost, [a, b], index) =>
+      addCost(cost, segmentCost(a, b, index > 0, false)), emptyCost);
     if (!winner || compareCosts(score, winner.cost) < 0) winner = { points, cost: score };
   }
 
@@ -204,7 +206,7 @@ function routeFlow(flow, bounds, obstacles, occupied) {
     }
   }
   // A clear path with at most one bend already meets the lower bound.
-  if (winner && !winner.cost[0] && !winner.cost[1]) return winner.points;
+  if (winner && winner.cost.slice(0, 3).every((value) => value === 0)) return winner.points;
 
   const ports = [...starts, ...ends];
   const xs = gridCoordinates(obstacles, ports, bounds, 'x');
@@ -236,18 +238,19 @@ function routeFlow(flow, bounds, obstacles, occupied) {
 
   starts.forEach(([anchor, exit, direction], start) => enqueue({
     i: startXs.get(exit.x), j: startYs.get(exit.y), point: exit, start, direction,
-    cost: priority(segmentCost(anchor, exit, direction, direction, occupied), exit)
+    cost: priority(segmentCost(anchor, exit, false, true), exit)
   }));
 
   while (queue.items.length) {
     const state = queue.pop();
-    const { i, j, point, start, direction, cost } = state;
-    if (best.get(state.id) !== cost) continue;
-    if (winner && compareCosts(cost.slice(0, 4), winner.cost) >= 0) break;
+    const { i, j, point, start, direction } = state;
+    if (best.get(state.id) !== state.cost) continue;
+    const cost = state.cost.slice(0, emptyCost.length);
+    if (winner && compareCosts(cost, winner.cost) >= 0) break;
 
     for (const [anchor, , endDirection] of exits.get(key(i, j)) ?? []) {
       if (isLoop && length(anchor, starts[start][0]) < EPSILON) continue;
-      const final = addCost(cost.slice(0, 4), segmentCost(point, anchor, endDirection, direction, occupied));
+      const final = addCost(cost, segmentCost(point, anchor, endDirection !== direction, true));
       if (!winner || compareCosts(final, winner.cost) < 0) {
         const points = [anchor];
         for (let step = state; step; step = step.previous) points.push(step.point);
@@ -272,7 +275,7 @@ function routeFlow(flow, bounds, obstacles, occupied) {
     }
 
     for (const next of neighbors.get(cell)) {
-      const total = addCost(cost.slice(0, 4), segmentCost(point, next.point, next.direction, direction, occupied));
+      const total = addCost(cost, segmentCost(point, next.point, next.direction !== direction, true));
       enqueue({ ...next, start, previous: state, cost: priority(total, next.point) });
     }
   }
