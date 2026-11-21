@@ -3,7 +3,7 @@ const TOLERANCE = 20;
 const EPSILON = 1e-7;
 
 const floorGrid = (value) => Math.floor((value + EPSILON) / GRID) * GRID;
-const ceilGrid = (value) => Math.ceil((value - EPSILON) / GRID) * GRID;
+export const ceilGrid = (value) => Math.ceil((value - EPSILON) / GRID) * GRID;
 const snap = (value) => Math.round(value / GRID) * GRID;
 
 export const center = (rect, axis) =>
@@ -58,7 +58,7 @@ function clusterColumns(units, rows) {
   return groups;
 }
 
-function forwardFlows(units, flows) {
+export function forwardFlows(units, flows) {
   const outgoing = new Map(units.map((unit) => [unit, []]));
   const hasIncoming = new Set();
   for (const flow of [...flows].sort((a, b) => compareIds(a.id, b.id))) {
@@ -128,13 +128,15 @@ function describeColumn(units) {
   return { units, anchor: (Math.min(...positions) + Math.max(...positions)) / 2 };
 }
 
-function verticalColumns(units, flows) {
+function verticalColumns(units, flows, joinAcrossLanes) {
   const originalVertical = ({ source, target }) =>
     Math.abs(center(source.shape, 'x') - center(target.shape, 'x')) <= TOLERANCE &&
     Math.abs(center(source.shape, 'y') - center(target.shape, 'y')) > TOLERANCE;
-  const horizontalTargets = new Set(flows.filter((flow) => !originalVertical(flow)).map((flow) => flow.target));
+  const crossesLanes = ({ source, target }) => joinAcrossLanes && source.lane && target.lane && source.lane !== target.lane;
+  const vertical = (flow) => originalVertical(flow) || crossesLanes(flow);
+  const horizontalTargets = new Set(flows.filter((flow) => !vertical(flow)).map((flow) => flow.target));
   const candidates = new Set(flows.filter((flow) =>
-    originalVertical(flow) &&
+    vertical(flow) &&
     !(flow.target.shape.type === 'bpmn:EndEvent' && horizontalTargets.has(flow.source))
   ));
   const columns = new Map(units.map((unit) => [unit, describeColumn([unit])]));
@@ -144,7 +146,10 @@ function verticalColumns(units, flows) {
     const first = columns.get(source);
     const second = columns.get(target);
     if (first === second) continue;
-    const merged = describeColumn([...first.units, ...second.units]);
+    const members = [...first.units, ...second.units];
+    const lanes = new Set(members.map((unit) => unit.lane));
+    if (lanes.size > 1 && lanes.size !== members.length) continue;
+    const merged = describeColumn(members);
     for (const unit of merged.units) columns.set(unit, merged);
 
     // Contract the vertical link only if every strict edge can still go right.
@@ -313,23 +318,25 @@ function extent(units, axis) {
   };
 }
 
-function distance(previous, next, minimum) {
-  return previous.after - next.before + Math.max(minimum, next.start - previous.end);
+function distance(previous, next, minimum, compact) {
+  return previous.after - next.before + (compact ? minimum : Math.max(minimum, next.start - previous.end));
 }
 
-function placeAxis(groups, axis, minimum, crossAxis) {
+function placeAxis(groups, axis, minimum, crossAxis, compact) {
   const positions = new Map();
   const previousByLine = new Map();
   let previous;
 
   for (const group of groups) {
     const edges = extent(group.units, axis);
-    let position = snap(group.anchor ?? (group.first + group.last) / 2);
+    let position = compact && previous
+      ? -Infinity
+      : snap(group.anchor ?? (group.first + group.last) / 2);
 
     if (previous) {
       position = Math.max(
         position,
-        previous.position + ceilGrid(distance(previous.edges, edges, minimum)),
+        previous.position + ceilGrid(distance(previous.edges, edges, minimum, compact)),
         // Keep distinct rows or columns distinct on subsequent runs.
         previous.position + ceilGrid(TOLERANCE + 1)
       );
@@ -346,7 +353,7 @@ function placeAxis(groups, axis, minimum, crossAxis) {
     for (const [line, units] of lines) {
       const edges = extent(units, axis);
       const last = previousByLine.get(line);
-      if (last) position = Math.max(position, last.position + ceilGrid(distance(last.edges, edges, minimum)));
+      if (last) position = Math.max(position, last.position + ceilGrid(distance(last.edges, edges, minimum, compact)));
       lineEdges.set(line, edges);
     }
 
@@ -360,13 +367,13 @@ function placeAxis(groups, axis, minimum, crossAxis) {
   return positions;
 }
 
-function placeColumns(rows, branches, branchUnits, columns, flows, minimum) {
+function placeColumns(rows, branches, branchUnits, columns, flows, minimum, compact) {
   const groups = new Set([...columns].filter(([unit]) => !branchUnits.has(unit)).map(([, group]) => group));
   const incoming = new Map([...groups].map((group) => [group, []]));
   const edges = [];
   const edgesByUnit = new Map([...columns.keys()].map((unit) => [unit, extent([unit], 'x')]));
   const between = (source, target) => Math.max(ceilGrid(TOLERANCE + 1),
-    ceilGrid(distance(edgesByUnit.get(source), edgesByUnit.get(target), minimum))
+    ceilGrid(distance(edgesByUnit.get(source), edgesByUnit.get(target), minimum, compact))
   );
   function constrain(source, target, gap) {
     const from = columns.get(source);
@@ -417,8 +424,9 @@ function placeColumns(rows, branches, branchUnits, columns, flows, minimum) {
 
   const positions = new Map();
   const x = new Map();
+  const anchor = compact ? Math.min(...preferred.map((column) => column.anchor)) : null;
   for (const group of preferred) {
-    let position = snap(group.anchor);
+    let position = snap(anchor ?? group.anchor);
     for (const { from, gap } of incoming.get(group)) {
       position = Math.max(position, positions.get(from) + gap);
     }
@@ -439,16 +447,17 @@ function fitAxis(start, end, min, max) {
   return low <= high ? Math.max(low, Math.min(0, high)) : null;
 }
 
-export function layoutRegion(units, limits, gaps, flows = []) {
+export function layoutRegion(units, limits, gaps, flows = [], options = {}) {
   if (!units.length) return new Map();
+  const { compact, joinAcrossLanes } = options;
   const forward = forwardFlows(units, flows);
-  const columns = verticalColumns(units, forward);
+  const columns = verticalColumns(units, forward, joinAcrossLanes);
   const { rows, branches, branchUnits } = clusterRows(units, forward, findBranchCandidates(forward), columns);
   const rowIndex = indexGroups(rows);
   const x = forward.length
-    ? placeColumns(rows, branches, branchUnits, columns, forward, gaps.x)
-    : placeAxis(clusterColumns(units, rowIndex), 'x', gaps.x, rowIndex);
-  const y = placeAxis(rows, 'y', gaps.y, x);
+    ? placeColumns(rows, branches, branchUnits, columns, forward, gaps.x, compact)
+    : placeAxis(clusterColumns(units, rowIndex), 'x', gaps.x, rowIndex, compact);
+  const y = placeAxis(rows, 'y', gaps.y, x, compact);
   const deltas = new Map(units.map((unit) => [unit, {
     x: x.get(unit) - center(unit.shape, 'x'),
     y: y.get(unit) - center(unit.shape, 'y')
@@ -472,4 +481,58 @@ export function layoutRegion(units, limits, gaps, flows = []) {
     if (Math.abs(delta.y) < EPSILON) delta.y = 0;
   }
   return deltas;
+}
+
+const unbounded = { left: -Infinity, right: Infinity, top: -Infinity, bottom: Infinity };
+
+export function layoutProcess(units, flows, gaps, compact = false) {
+  const horizontal = layoutRegion(units, unbounded, gaps, flows, { compact, joinAcrossLanes: true });
+  if (!horizontal) return null;
+
+  const byLane = Map.groupBy(units, (unit) => unit.lane);
+  if (byLane.size === 1) return horizontal;
+
+  // Columns come from the whole graph. A lane has its own row ordering and spacing.
+  const deltas = new Map();
+  for (const [lane, members] of byLane) {
+    const local = flows.filter(({ source, target }) => source.lane === lane && target.lane === lane);
+    const rows = layoutRegion(members, unbounded, gaps, local, { compact });
+    if (!rows) return null;
+    for (const unit of members) deltas.set(unit, { x: horizontal.get(unit).x, y: rows.get(unit).y });
+  }
+  return deltas;
+}
+
+export function adjacentBranches(units, flows, positions) {
+  const branches = findBranchCandidates(forwardFlows(units, flows));
+  const pairs = [];
+  for (const [split, outgoing] of Map.groupBy(branches, (branch) => branch.split)) {
+    for (const related of Map.groupBy(outgoing, (branch) => branch.merge).values()) {
+      for (const siblings of Map.groupBy(related, (branch) => branch.units[0].lane).values()) {
+        const ordered = siblings.filter(({ units }) => {
+          const row = center(positions.get(units[0]), 'y');
+          return units.every((unit) => unit.lane === units[0].lane && center(positions.get(unit), 'y') === row);
+        })
+          .sort((a, b) => center(positions.get(a.units[0]), 'y') - center(positions.get(b.units[0]), 'y') ||
+            compareIds(a.units[0].shape.id, b.units[0].shape.id));
+        for (let index = 1; index < ordered.length; index++) {
+          const first = ordered[index - 1];
+          const second = ordered[index];
+          const a = center(positions.get(first.units[0]), 'y');
+          const b = center(positions.get(second.units[0]), 'y');
+          const mainRow = center(positions.get(split), 'y');
+          const mainIsStraight = mainRow === center(positions.get(first.merge), 'y');
+          const hasDefault = [first, second].some(({ units }) => flows.some((flow) =>
+            flow.source === split && flow.target === units[0] && flow.isDefault));
+          if (a !== b && !hasDefault && !(mainIsStraight && (a === mainRow || b === mainRow))) {
+            pairs.push(new Map([
+              ...first.units.map((unit) => [unit, b - a]),
+              ...second.units.map((unit) => [unit, a - b])
+            ]));
+          }
+        }
+      }
+    }
+  }
+  return pairs;
 }

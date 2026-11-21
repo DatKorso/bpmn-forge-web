@@ -154,11 +154,15 @@ byId('align').addEventListener('click', () => {
   if (busy || !modeler || !alignment.reportValidity()) return;
 
   try {
-    const { moved, skipped } = modeler.get('autoAlign').run({
+    const { moved, resized, rerouted, skipped } = modeler.get('autoAlign').run({
       x: gapX.valueAsNumber,
       y: gapY.valueAsNumber
     });
-    reportAlignment(`Перемещено фигур: ${moved}. Пропущено участков: ${skipped.length}.`, skipped);
+    reportAlignment(
+      `Перемещено фигур: ${moved}. Расширено контейнеров: ${resized}. Обновлено связей: ${rerouted}. ` +
+      `Пропущено участков: ${skipped.length}.`,
+      skipped
+    );
   } catch (error) {
     reportAlignment('Не удалось выполнить автовыравнивание.', [], true);
     console.error(error);
