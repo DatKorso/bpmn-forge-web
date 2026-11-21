@@ -272,7 +272,10 @@ function routeFlow(flow, bounds, obstacles, occupied) {
 export function routeFlows(flows, bounds, obstacles) {
   const routes = new Map();
   const occupied = [];
+  const straight = new Set(flows.filter((flow) => !flow.back && hasStraightRoute(flow, bounds, obstacles)));
+  // Reserve clear straight paths before off-row branches can occupy their ports.
   const ordered = [...flows].sort((a, b) => Number(!!a.back) - Number(!!b.back) ||
+    Number(straight.has(b)) - Number(straight.has(a)) ||
     Number(!!b.isDefault) - Number(!!a.isDefault) || (a.id < b.id ? -1 : 1));
 
   for (const flow of ordered) {
@@ -282,6 +285,23 @@ export function routeFlows(flows, bounds, obstacles) {
     occupied.push(...segments(route));
   }
   return routes;
+}
+
+function hasStraightRoute(flow, bounds, obstacles) {
+  const { source, target } = flow;
+  const from = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+  const to = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
+  if (from.y === to.y) {
+    const [a, b] = from.x < to.x ? [right(source), target.x] : [source.x, right(target)];
+    return (b - a) * (to.x - from.x) > 0 &&
+      acceptsRoute([{ x: a, y: from.y }, { x: b, y: to.y }], flow, bounds, obstacles);
+  }
+  if (from.x === to.x) {
+    const [a, b] = from.y < to.y ? [bottom(source), target.y] : [source.y, bottom(target)];
+    return (b - a) * (to.y - from.y) > 0 &&
+      acceptsRoute([{ x: from.x, y: a }, { x: to.x, y: b }], flow, bounds, obstacles);
+  }
+  return false;
 }
 
 function onBoundary(point, rect) {

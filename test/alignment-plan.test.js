@@ -68,6 +68,31 @@ test('keeps a straight connection across a gap narrower than the usual routing m
   assert.deepEqual(route.get('short'), [point(40, 20), point(42, 20)]);
 });
 
+test('keeps the main row straight and connects bypass branches with one bend each', () => {
+  const split = box(65, 155, 50, 50);
+  const lower = box(220, 280, 100, 80);
+  const middle = box(400, 140, 100, 80);
+  const upper = box(580, 0, 100, 80);
+  const merge = box(775, 155, 50, 50);
+  const flows = [
+    { id: '1-split-middle', source: split, target: middle },
+    { id: '2-split-lower', source: split, target: lower },
+    { id: '3-middle-upper', source: middle, target: upper },
+    { id: '4-middle-merge', source: middle, target: merge },
+    { id: '5-upper-merge', source: upper, target: merge },
+    { id: '6-lower-middle', source: lower, target: middle }
+  ];
+  const routes = routeFlows(flows, { left: 0, top: -20, right: 960, bottom: 380 },
+    [split, lower, middle, upper, merge]);
+
+  assert.deepEqual(routes.get('1-split-middle'), [point(115, 180), point(400, 180)]);
+  assert.deepEqual(routes.get('4-middle-merge'), [point(500, 180), point(775, 180)]);
+  for (const id of ['2-split-lower', '3-middle-upper', '5-upper-merge', '6-lower-middle']) {
+    assert.equal(routes.get(id).length, 3, id);
+  }
+  assert.deepEqual(routeCost(routes.values()).slice(0, 3), [0, 0, 4]);
+});
+
 test('straightens a chaotically placed default path and reduces crossings at a split and merge', () => {
   const d = diagram();
   const split = d.add('Split', box(260, 160, 50, 50));
