@@ -50,7 +50,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: production
+    environment:
+      name: production
+      url: https://bpmn.korso.cc
     permissions:
       contents: write
     concurrency:
@@ -94,7 +96,7 @@ jobs:
         run: |
           for attempt in {1..24}; do
             deployed="$(curl --fail --silent --max-time 5 \
-              "https://bplm-forge.korso.cc/deployment-version.txt?sha=$GITHUB_SHA")" || deployed=
+              "https://bpmn.korso.cc/deployment-version.txt?sha=$GITHUB_SHA")" || deployed=
             if [[ "$deployed" == "$GITHUB_SHA" ]]; then
               echo "Verified deployment of $GITHUB_SHA"
               exit 0
