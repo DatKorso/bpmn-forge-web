@@ -80,7 +80,7 @@ function inside(point, { left, right, top, bottom }) {
   return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
 }
 
-function cutsInterior(a, b, rect) {
+export function cutsInterior(a, b, rect) {
   if (horizontal(a, b)) {
     return a.y > rect.y && a.y < bottom(rect) &&
       Math.min(a.x, b.x) < right(rect) && Math.max(a.x, b.x) > rect.x;
@@ -100,15 +100,24 @@ export function translatedRouteIsClear(points, { source, target }, bounds, obsta
     segments(points).every(([a, b]) => !others.some((rect) => cutsInterior(a, b, rect)));
 }
 
-function getPorts(rect, bounds, obstacles) {
+function getPorts(rect, bounds, obstacles, projection) {
   const x = rect.x + rect.width / 2;
   const y = rect.y + rect.height / 2;
-  return [
+  const ports = [
     [{ x: right(rect), y }, 1, 0],
     [{ x, y: bottom(rect) }, 0, 1],
     [{ x: rect.x, y }, -1, 0],
     [{ x, y: rect.y }, 0, -1]
-  ].flatMap(([anchor, dx, dy]) => {
+  ];
+  if (projection) {
+    const insetX = Math.min(ROUTE_MARGIN, rect.width / 2);
+    const insetY = Math.min(ROUTE_MARGIN, rect.height / 2);
+    const px = Math.max(rect.x + insetX, Math.min(right(rect) - insetX, projection.x));
+    const py = Math.max(rect.y + insetY, Math.min(bottom(rect) - insetY, projection.y));
+    ports.unshift([{ x: right(rect), y: py }, 1, 0], [{ x: px, y: bottom(rect) }, 0, 1],
+      [{ x: rect.x, y: py }, -1, 0], [{ x: px, y: rect.y }, 0, -1]);
+  }
+  return ports.flatMap(([anchor, dx, dy]) => {
     if (!inside(anchor, bounds)) return [];
     for (const margin of [ROUTE_MARGIN, 1]) {
       const exit = { x: anchor.x + dx * margin, y: anchor.y + dy * margin };
@@ -128,7 +137,7 @@ class Queue {
     let index = items.length;
     while (index) {
       const parent = (index - 1) >> 1;
-      if (compareCosts(items[parent].cost, entry.cost) <= 0) break;
+      if (compareCosts(items[parent].priority, entry.priority) <= 0) break;
       items[index] = items[parent];
       index = parent;
     }
@@ -143,8 +152,8 @@ class Queue {
     let index = 0;
     while (index * 2 + 1 < items.length) {
       let child = index * 2 + 1;
-      if (child + 1 < items.length && compareCosts(items[child + 1].cost, items[child].cost) < 0) child++;
-      if (compareCosts(last.cost, items[child].cost) <= 0) break;
+      if (child + 1 < items.length && compareCosts(items[child + 1].priority, items[child].priority) < 0) child++;
+      if (compareCosts(last.priority, items[child].priority) <= 0) break;
       items[index] = items[child];
       index = child;
     }
@@ -153,13 +162,16 @@ class Queue {
   }
 }
 
-function gridCoordinates(obstacles, ports, bounds, axis) {
+function gridCoordinates(obstacles, ports, bounds, axis, frames) {
   const start = axis === 'x' ? bounds.left : bounds.top;
   const end = axis === 'x' ? bounds.right : bounds.bottom;
   const far = axis === 'x' ? right : bottom;
   const coordinates = [start, end, ...ports.map(([, exit]) => exit[axis])];
   for (const rect of obstacles) {
     coordinates.push(rect[axis] - ROUTE_MARGIN, far(rect) + ROUTE_MARGIN);
+  }
+  for (const frame of frames) {
+    coordinates.push(frame[axis], far(frame));
   }
   return [...new Set(coordinates.filter((value) => Number.isFinite(value) && value >= start && value <= end))]
     .sort((a, b) => a - b);
@@ -169,15 +181,17 @@ function addCost(a, b) {
   return a.map((value, index) => value + b[index]);
 }
 
-function routeFlow(flow, bounds, obstacles, occupied) {
+export function routeFlow(flow, bounds, obstacles, occupied = []) {
+  const { passage, frames = [], startPhase = 0, sourceProjection, targetProjection } = flow;
+  const advance = passage ?? ((phase) => phase);
   const { source, target } = flow;
-  const starts = getPorts(source, bounds, obstacles);
-  const ends = getPorts(target, bounds, obstacles);
+  const starts = getPorts(source, bounds, obstacles, sourceProjection);
+  const ends = getPorts(target, bounds, obstacles, targetProjection);
   if (!starts.length || !ends.length) return null;
 
   const progressAxis = flow.vertical ? 'y' : 'x';
   const sourceEnd = flow.vertical ? bottom(source) : right(source);
-  const advances = !flow.back && sourceEnd <= target[progressAxis];
+  const advances = !passage && !flow.back && sourceEnd <= target[progressAxis];
   function segmentCost(a, b, bend, includeStart) {
     const [crossings, overlap] = interactionCost([a, b], occupied, includeStart);
     // Prefer a forward path even when outgoing branches need to share a stem.
@@ -188,8 +202,9 @@ function routeFlow(flow, bounds, obstacles, occupied) {
   const emptyCost = [0, 0, 0, 0, 0];
   let winner;
   function consider(points) {
-    if (points.length > 3 || !acceptsRoute(points, flow, bounds, obstacles)) return;
+    if (points.length > (passage ? 4 : 3) || !acceptsRoute(points, flow, bounds, obstacles)) return;
     const path = segments(points);
+    if (passage && path.reduce((phase, [a, b]) => phase < 0 ? phase : advance(phase, a, b), startPhase) < 0) return;
     const score = path.reduce((cost, [a, b], index) =>
       addCost(cost, segmentCost(a, b, index > 0, false)), emptyCost);
     if (!winner || compareCosts(score, winner.cost) < 0) winner = { points, cost: score };
@@ -209,8 +224,22 @@ function routeFlow(flow, bounds, obstacles, occupied) {
   if (winner && winner.cost.slice(0, 3).every((value) => value === 0)) return winner.points;
 
   const ports = [...starts, ...ends];
-  const xs = gridCoordinates(obstacles, ports, bounds, 'x');
-  const ys = gridCoordinates(obstacles, ports, bounds, 'y');
+  const xs = gridCoordinates(obstacles, ports, bounds, 'x', frames);
+  const ys = gridCoordinates(obstacles, ports, bounds, 'y', frames);
+  if (passage) {
+    for (const [a, exit, fromDirection] of starts) {
+      for (const [b, entry, toDirection] of ends) {
+        if (fromDirection !== toDirection) continue;
+        const axis = fromDirection ? 'y' : 'x';
+        const channels = fromDirection ? ys : xs;
+        for (const value of channels) {
+          consider(simplifyRoute([a, exit, { ...exit, [axis]: value }, { ...entry, [axis]: value }, entry, b]));
+        }
+      }
+    }
+    if (winner && winner.cost.slice(0, 3).every((value) => value === 0)) return winner.points;
+  }
+
   const startXs = new Map(xs.map((value, index) => [value, index]));
   const startYs = new Map(ys.map((value, index) => [value, index]));
   const queue = new Queue();
@@ -223,32 +252,49 @@ function routeFlow(flow, bounds, obstacles, occupied) {
   const exits = Map.groupBy(ends, (port) => key(startXs.get(port[1].x), startYs.get(port[1].y)));
 
   function enqueue(state) {
-    const id = ((key(state.i, state.j) * 2 + state.direction) * (isLoop ? starts.length : 1)) +
+    if (state.phase < 0) return;
+    const id = (((key(state.i, state.j) * 3 + state.phase) * 2 + state.direction) * (isLoop ? starts.length : 1)) +
       (isLoop ? state.start : 0);
     if (best.has(id) && compareCosts(best.get(id), state.cost) <= 0) return;
     best.set(id, state.cost);
-    queue.push({ ...state, id });
+    queue.push({ ...state, id, priority: priority(state) });
   }
 
-  // A small tie-break preference keeps return flows away from the main line.
-  function priority(cost, point) {
+  function priority({ cost, point, direction }) {
+    if (passage) {
+      // Lower bounds on the remaining turns and length keep the search near useful corridors.
+      let bends = Infinity;
+      let distance = Infinity;
+      for (const [anchor, port, endDirection] of ends) {
+        const x = point.x !== port.x;
+        const y = point.y !== port.y;
+        let turns = Number(direction !== endDirection);
+        if (x && y) turns = 1 + Number(direction === endDirection);
+        else if (x || y) turns = Number(direction !== Number(y)) + Number(endDirection !== Number(y));
+        bends = Math.min(bends, turns);
+        distance = Math.min(distance, length(point, port) + length(port, anchor));
+      }
+      return [...cost.slice(0, 3), cost[3] + bends, cost[4] + distance];
+    }
+    // A small tie-break preference keeps return flows away from the main line.
     if (!flow.back || !sides.every(Number.isFinite)) return cost;
     return [...cost, Math.min(...sides.map((side) => Math.abs(point[axis] - side)))];
   }
 
   starts.forEach(([anchor, exit, direction], start) => enqueue({
-    i: startXs.get(exit.x), j: startYs.get(exit.y), point: exit, start, direction,
-    cost: priority(segmentCost(anchor, exit, false, true), exit)
+    i: startXs.get(exit.x), j: startYs.get(exit.y), point: exit, start, direction, phase: advance(startPhase, anchor, exit),
+    cost: segmentCost(anchor, exit, false, true)
   }));
 
   while (queue.items.length) {
     const state = queue.pop();
     const { i, j, point, start, direction } = state;
     if (best.get(state.id) !== state.cost) continue;
-    const cost = state.cost.slice(0, emptyCost.length);
-    if (winner && compareCosts(cost, winner.cost) >= 0) break;
+    const { cost } = state;
+    if (winner && compareCosts(state.priority.slice(0, emptyCost.length), winner.cost) >= 0) break;
 
     for (const [anchor, , endDirection] of exits.get(key(i, j)) ?? []) {
+      if (advance(state.phase, point, anchor) < 0) continue;
       if (isLoop && length(anchor, starts[start][0]) < EPSILON) continue;
       const final = addCost(cost, segmentCost(point, anchor, endDirection !== direction, true));
       if (!winner || compareCosts(final, winner.cost) < 0) {
@@ -276,7 +322,8 @@ function routeFlow(flow, bounds, obstacles, occupied) {
 
     for (const next of neighbors.get(cell)) {
       const total = addCost(cost, segmentCost(point, next.point, next.direction !== direction, true));
-      enqueue({ ...next, start, previous: state, cost: priority(total, next.point) });
+      enqueue({ ...next, start, previous: state, phase: advance(state.phase, point, next.point),
+        cost: total });
     }
   }
 

@@ -9,6 +9,8 @@ const COMMAND = 'editor.autoAlign';
 const SKIP_REASONS = {
   bounds: 'раскладка выходит за допустимые координаты',
   collisions: 'не удалось разместить фигуры без наложений в своих областях',
+  poolStability: 'расстановка пулов пропущена: не достигнуто устойчивое положение',
+  poolRouting: 'расстановка пулов пропущена: не удалось разместить пулы и провести потоки сообщений',
   routing: 'не удалось провести все стрелки в обход фигур'
 };
 
@@ -63,17 +65,21 @@ function snapshot(root, shapes, elementRegistry) {
   }
 
   const edges = [];
+  const messageFlows = [];
+  const auxiliary = [];
   for (const [element, source] of byElement) {
     for (const connection of element.outgoing) {
       const target = byElement.get(connection.target);
-      if (!target || connection.hidden || !is(connection, 'bpmn:SequenceFlow')) continue;
-      edges.push({
+      if (!target || connection.hidden) continue;
+      const group = is(connection, 'bpmn:SequenceFlow') ? edges :
+        is(connection, 'bpmn:MessageFlow') ? messageFlows : auxiliary;
+      group.push({
         id: connection.id, connection, source, target, points: connection.waypoints,
         isDefault: element.businessObject.default === connection.businessObject
       });
     }
   }
-  return { root: diagramRoot, figures: [...byElement.values()], edges };
+  return { root: diagramRoot, figures: [...byElement.values()], edges, messageFlows, auxiliary };
 }
 
 function sameWaypoints(a, b) {
@@ -153,12 +159,11 @@ class AutoAlign {
     commandStack.registerHandler(COMMAND, AlignCommand);
   }
 
-  shapesByRoot(onlyRoot, includeGroups = false) {
+  shapesByRoot(onlyRoot) {
     const shapesByRoot = new Map();
 
     for (const shape of this.elementRegistry.getAll()) {
-      if (!shape.parent || shape.hidden || shape.waypoints || shape.labelTarget ||
-          !includeGroups && is(shape, 'bpmn:Group')) continue;
+      if (!shape.parent || shape.hidden || shape.waypoints || shape.labelTarget) continue;
       const root = this.canvas.findRoot(shape);
       if (onlyRoot && root !== onlyRoot) continue;
       if (!shapesByRoot.has(root)) shapesByRoot.set(root, []);
@@ -169,7 +174,7 @@ class AutoAlign {
 
   selection(elements) {
     const root = this.canvas.getRootElement();
-    const shapes = elements.length ? this.shapesByRoot(root, true).get(root) ?? [] : [];
+    const shapes = elements.length ? this.shapesByRoot(root).get(root) ?? [] : [];
     const diagram = snapshot(root, shapes, this.elementRegistry);
     return { diagram, ...alignmentSelection(diagram, elements) };
   }
@@ -188,11 +193,14 @@ class AutoAlign {
       const delta = { x: next.x - box.x, y: next.y - box.y };
       for (const label of element.labels) bounds.set(label, translate(label, delta));
       for (const connection of [...element.incoming, ...element.outgoing]) {
-        if (!connection.hidden && !is(connection, 'bpmn:SequenceFlow')) connections.add(connection);
+        if (!connection.hidden && !is(connection, 'bpmn:SequenceFlow') && !is(connection, 'bpmn:MessageFlow')) {
+          connections.add(connection);
+        }
       }
     }
 
     for (const [{ connection }, points] of plan.routes) {
+      connections.delete(connection);
       if (!sameWaypoints(connection.waypoints, points)) routes.set(connection, points);
     }
     const projected = (element) => bounds.has(element) ? {
@@ -217,7 +225,12 @@ class AutoAlign {
     }
 
     if (bounds.size || routes.size) this.commandStack.execute(COMMAND, { bounds, routes, relayout: [] });
-    return { moved: plan.boxes.size, rerouted: routes.size };
+    return {
+      moved: plan.boxes.size, rerouted: routes.size,
+      movedPools: [...plan.boxes].filter(([{ kind, box }, next]) =>
+        kind === 'pool' && (box.x !== next.x || box.y !== next.y)).length,
+      reroutedMessages: [...routes.keys()].filter((connection) => is(connection, 'bpmn:MessageFlow')).length
+    };
   }
 
   run(gaps) {
@@ -227,20 +240,22 @@ class AutoAlign {
     const skipped = [];
     let moved = 0;
     let resized = 0;
+    let movedPools = 0;
 
     for (const [root, shapes] of this.shapesByRoot()) {
       const diagram = snapshot(root, shapes, this.elementRegistry);
       const plan = planAlignment(diagram, gaps);
-      for (const [{ element, box }, next] of plan.boxes) {
+      for (const [{ element, box, kind }, next] of plan.boxes) {
         bounds.set(element, next);
         const delta = { x: next.x - box.x, y: next.y - box.y };
         if (delta.x || delta.y) {
           moved++;
+          if (kind === 'pool') movedPools++;
           for (const label of element.labels) bounds.set(label, translate(label, delta));
         }
         if (next.width !== box.width || next.height !== box.height) resized++;
         for (const connection of [...element.incoming, ...element.outgoing]) {
-          if (!connection.hidden) relayout.add(connection);
+          if (!connection.hidden && !is(connection, 'bpmn:MessageFlow')) relayout.add(connection);
         }
       }
       for (const [{ connection }, route] of plan.routes) {
@@ -253,7 +268,8 @@ class AutoAlign {
     }
 
     if (bounds.size || routes.size) this.commandStack.execute(COMMAND, { bounds, routes, relayout });
-    return { moved, resized, rerouted: routes.size + relayout.size, skipped };
+    return { moved, resized, rerouted: routes.size + relayout.size, skipped, movedPools,
+      reroutedMessages: [...routes.keys()].filter((connection) => is(connection, 'bpmn:MessageFlow')).length };
   }
 }
 

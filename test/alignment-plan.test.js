@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { alignmentSelection, planAlignment, planSelection } from '../src/alignment-plan.js';
 import { boundsOf, center, intersects, layoutProcess, translate } from '../src/layout.js';
-import { compareCosts, ROUTE_MARGIN, routeCost, routeFlows } from '../src/route-flows.js';
+import { collaboration, routeMessages } from '../src/pool-layout.js';
+import { compareCosts, cutsInterior, ROUTE_MARGIN, routeCost, routeFlows } from '../src/route-flows.js';
 
 const gaps = { x: 40, y: 30 };
 const box = (x, y, width = 100, height = 60) => ({ x, y, width, height });
@@ -12,6 +13,7 @@ function diagram() {
   const root = { id: 'root', kind: 'root', header: 0, horizontal: true };
   const figures = [];
   const edges = [];
+  const messageFlows = [];
 
   function add(id, bounds, options = {}) {
     const scope = options.scope ?? root;
@@ -26,7 +28,13 @@ function diagram() {
     return edge;
   }
 
-  return { root, figures, edges, add, connect };
+  function message(source, target, points) {
+    const edge = { id: source.id + '-' + target.id, source, target, points };
+    messageFlows.push(edge);
+    return edge;
+  }
+
+  return { root, figures, edges, messageFlows, add, connect, message };
 }
 
 function finalBox(plan, figure) {
@@ -564,4 +572,150 @@ test('keeps the default branch straight and repeats a compact split and merge wi
   const repeat = planAlignment(d, limits);
   assert.equal(repeat.boxes.size, 0);
   assert.deepEqual(repeat.routes, plan.routes);
+});
+
+for (const horizontal of [true, false]) {
+  test(`aligns message endpoints around a ${horizontal ? 'horizontal' : 'vertical'} anchor and preserves its top-left`, () => {
+    const d = diagram();
+    const world = ([x, y, width, height]) => horizontal ? box(x, y, width, height) : box(y, x, height, width);
+    const pool = (id, ...rect) => d.add(id, world(rect), { kind: 'pool', horizontal, header: 30 });
+    const task = (id, scope, ...rect) => d.add(id, world(rect), { scope });
+    const anchor = pool('Anchor', 100, 400, 600, 200);
+    const above = pool('Above', 900, 140, 350, 140);
+    const empty = pool('Empty', 700, 660, 350, 140);
+    const a = task('A', anchor, 170, 460, 100, 60);
+    const b = task('B', anchor, 340, 460, 100, 60);
+    const c = task('C', above, 1000, 200, 100, 60);
+    const message = d.message(c, a);
+    const toFrame = d.message(b, empty);
+    const spacing = { x: 110, y: 110, maxX: 120, maxY: 120 };
+    const plan = planAlignment(d, spacing);
+    assert.deepEqual(plan.skipped, []);
+    assert.equal(center(finalBox(plan, a), horizontal ? 'x' : 'y'), center(finalBox(plan, c), horizontal ? 'x' : 'y'));
+    assert.deepEqual(finalBox(plan, anchor), anchor.box);
+    const cross = horizontal ? 'y' : 'x';
+    const dimension = horizontal ? 'height' : 'width';
+    assert.ok(anchor.box[cross] - finalBox(plan, above)[cross] - finalBox(plan, above)[dimension] >= 110);
+    assert.ok(finalBox(plan, empty)[cross] - anchor.box[cross] - anchor.box[dimension] >= 110);
+    assert.equal(plan.routes.get(message).length, 2);
+    assert.equal(plan.routes.get(toFrame).at(-1)[cross], finalBox(plan, empty)[cross]);
+    apply(plan);
+    const repeat = planAlignment(d, spacing);
+    assert.equal(repeat.boxes.size, 0);
+    assert.deepEqual(repeat.routes.get(message), message.points);
+    assert.deepEqual(repeat.routes.get(toFrame), toFrame.points);
+  });
+}
+
+test('routes around a third pool and docks to the projected position on an empty pool', () => {
+  const d = diagram();
+  const pool = (id, bounds) => d.add(id, bounds, { kind: 'pool', horizontal: true, header: 30 });
+  const a = pool('A', box(0, 0, 440, 180));
+  const b = pool('B', box(0, 480, 440, 180));
+  const obstacle = pool('Obstacle', box(0, 250, 440, 120));
+  const source = d.add('Source', box(250, 60), { scope: a });
+  const flow = d.message(source, b);
+  const spectator = pool('Spectator', box(520, 250, 440, 120));
+  const selection = alignmentSelection(d, [a.element, spectator.element]);
+  const plan = planSelection(d, selection, gaps);
+  assert.equal(plan.reason, undefined);
+  assert.deepEqual(finalBox(plan, a), a.box);
+  assert.deepEqual(finalBox(plan, b), b.box);
+  const points = plan.routes.get(flow);
+  assert.ok(points.length >= 3);
+  for (let i = 1; i < points.length; i++) {
+    assert.ok(points[i].x === points[i - 1].x || points[i].y === points[i - 1].y);
+    assert.ok(!cutsInterior(points[i - 1], points[i], finalBox(plan, obstacle)));
+  }
+
+  const clear = diagram();
+  const from = clear.add('From', a.box, { kind: 'pool', horizontal: true, header: 30 });
+  const to = clear.add('To', b.box, { kind: 'pool', horizontal: true, header: 30 });
+  const node = clear.add('Node', source.box, { scope: from });
+  const direct = clear.message(node, to);
+  const result = planSelection(clear, alignmentSelection(clear, [from.element, to.element]), gaps);
+  assert.deepEqual(result.routes.get(direct), [point(300, 120), point(300, finalBox(result, to).y)]);
+});
+
+test('moves selected pools and their descendants rigidly and leaves stationary participants in place', () => {
+  const d = diagram();
+  const pool = (id, bounds) => d.add(id, bounds, { kind: 'pool', horizontal: true, header: 30 });
+  const a = pool('A', box(0, 0, 600, 200));
+  const b = pool('B', box(700, 300, 450, 200));
+  const c = pool('C', box(0, 650, 600, 200));
+  const node = (id, scope, x, y) => d.add(id, box(x, y), { scope });
+  const start = node('Start', a, 200, 60);
+  node('Other', a, 350, 60);
+  node('Last', a, 480, 60);
+  const target = node('Target', b, 810, 360);
+  const nested = node('Nested', b, 975, 360);
+  const sequence = d.connect(target, nested);
+  sequence.points = [point(910, 390), point(975, 390)];
+  const message = d.message(start, target);
+  const original = target.box;
+  const selection = alignmentSelection(d, [a.element, b.element]);
+  assert.equal(alignmentSelection(d, [a.element, target.element]).reason, 'Выберите только пулы или фигуры одного процесса');
+  const plan = planSelection(d, selection, gaps);
+  assert.ok(plan.boxes.has(b));
+  assert.ok(!plan.boxes.has(a) && !plan.boxes.has(c) && !plan.boxes.has(start));
+  const delta = { x: finalBox(plan, b).x - b.box.x, y: finalBox(plan, b).y - b.box.y };
+  assert.deepEqual(finalBox(plan, target), translate(original, delta));
+  assert.deepEqual(plan.routes.get(sequence), sequence.points.map(({ x, y }) => point(x + delta.x, y + delta.y)));
+  assert.equal(plan.routes.get(message).length, 2);
+  apply(plan);
+  assert.equal(planSelection(d, selection, gaps).boxes.size, 0);
+});
+
+test('rejects a pool selection atomically when an incident message cannot be routed', () => {
+  const d = diagram();
+  const a = d.add('A', box(0, 0, 450, 150), { kind: 'pool', horizontal: true });
+  const b = d.add('B', box(600, 300, 450, 150), { kind: 'pool', horizontal: true });
+  const source = d.add('Source', box(100, 30), { scope: a });
+  const inside = d.add('Inside', box(750, 350), { scope: b });
+  d.add('Blocker', box(700, 330, 220, 110), { kind: 'artifact', scope: b });
+  d.message(source, inside);
+  const boxes = d.figures.map((figure) => figure.box);
+  const result = planSelection(d, alignmentSelection(d, [a.element, b.element]), gaps);
+  assert.deepEqual(result, { reason: 'poolRouting' });
+  assert.deepEqual(d.figures.map((figure) => figure.box), boxes);
+  const global = planAlignment(d, gaps);
+  assert.ok(global.skipped.some(({ reason }) => reason === 'poolRouting'));
+  assert.equal(global.boxes.size, 0);
+  assert.equal(global.routes.size, 0);
+});
+
+test('repairs a message between stationary pools when another pool moves across its path', () => {
+  const d = diagram();
+  const pool = (id, bounds) => d.add(id, bounds, { kind: 'pool', horizontal: true, header: 30 });
+  const sender = pool('Sender', box(0, 0, 440, 150));
+  const receiver = pool('Receiver', box(0, 550, 440, 150));
+  const blocking = pool('Blocking', box(510, 250, 440, 150));
+  const a = d.add('A', box(150, 45), { scope: sender });
+  const b = d.add('B', box(150, 595), { scope: receiver });
+  const message = d.message(a, b, [point(200, 105), point(200, 595)]);
+  const collab = collaboration(d.figures, d.messageFlows);
+  const original = { boxes: new Map(d.figures.map((figure) => [figure, figure.box])), routes: new Map() };
+  const moved = box(0, 250, 440, 150);
+  const planned = { boxes: new Map(original.boxes).set(blocking, moved) };
+  const routes = routeMessages(collab, planned, original, { selection: true });
+  const points = routes.get(message);
+  assert.notDeepEqual(points, message.points);
+  assert.ok(points.slice(1).every((end, i) => !cutsInterior(points[i], end, moved)));
+});
+
+test('aligns the contents of one selected pool inside its existing frame', () => {
+  const d = diagram();
+  const a = d.add('A', box(0, 0, 620, 270), { kind: 'pool', horizontal: true, header: 30 });
+  const b = d.add('B', box(100, 400, 430, 200), { kind: 'pool', horizontal: true, header: 30 });
+  const start = d.add('Start', box(90, 120), { scope: a });
+  const end = d.add('End', box(250, 60), { scope: a });
+  const outside = d.add('Outside', box(170, 480), { scope: b });
+  d.connect(start, end);
+  const message = d.message(end, outside);
+  const plan = planSelection(d, alignmentSelection(d, [a.element]), gaps);
+  assert.equal(plan.reason, undefined);
+  assert.ok(plan.boxes.has(start) || plan.boxes.has(end));
+  assert.ok(!plan.boxes.has(a) && !plan.boxes.has(b) && !plan.boxes.has(outside));
+  assert.equal(center(finalBox(plan, start), 'y'), center(finalBox(plan, end), 'y'));
+  assert.ok(plan.routes.has(message));
 });

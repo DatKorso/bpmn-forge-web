@@ -217,9 +217,10 @@ byId('align').addEventListener('click', () => {
   if (busy || !modeler || !checkGaps()) return;
 
   try {
-    const { moved, resized, rerouted, skipped } = modeler.get('autoAlign').run(alignmentGaps());
+    const { moved, resized, rerouted, skipped, movedPools, reroutedMessages } = modeler.get('autoAlign').run(alignmentGaps());
     reportAlignment(
       `Перемещено фигур: ${moved}. Расширено контейнеров: ${resized}. Обновлено связей: ${rerouted}. ` +
+      `Перемещено пулов: ${movedPools}. Перестроено потоков сообщений: ${reroutedMessages}. ` +
       `Пропущено участков: ${skipped.length}.`,
       skipped
     );
@@ -233,9 +234,10 @@ alignSelection.addEventListener('click', () => {
   if (busy || !modeler || !checkGaps() || alignSelection.getAttribute('aria-disabled') === 'true') return;
   try {
     const selection = modeler.get('selection').get();
-    const { moved, rerouted, reason } = modeler.get('autoAlign').runSelection(selection, alignmentGaps());
+    const { moved, rerouted, reason, movedPools, reroutedMessages } = modeler.get('autoAlign').runSelection(selection, alignmentGaps());
     if (reason) reportAlignment(`Не удалось выровнять выделение: ${reason}.`, [], true);
-    else reportAlignment(`Выделение: перемещено фигур — ${moved}, обновлено связей — ${rerouted}.`);
+    else reportAlignment(`Выделение: перемещено фигур — ${moved}, обновлено связей — ${rerouted}. ` +
+      `Перемещено пулов: ${movedPools}. Перестроено потоков сообщений: ${reroutedMessages}.`);
   } catch (error) {
     reportAlignment('Не удалось выровнять выделение.', [], true);
     console.error(error);

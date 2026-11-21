@@ -1,5 +1,6 @@
 import { adjacentBranches, boundsOf, ceilGrid, center, forwardFlows, intersects, layoutProcess, translate, translateWaypoints } from './layout.js';
 import { acceptsRoute, compareCosts, ROUTE_MARGIN, routeCost, routeFlows, translatedRouteIsClear } from './route-flows.js';
+import { collaboration, placePools, routeMessages } from './pool-layout.js';
 
 const POOL_INSET = 20;
 
@@ -49,8 +50,9 @@ function moveTree(state, diagram, figure, delta) {
     state.boxes.set(member, translate(state.boxes.get(member), delta));
     pending.push(...(diagram.children.get(member) ?? []), ...attachments(diagram, member));
   }
-  for (const [edge, points] of state.routes) {
-    if (moved.has(edge.source) && moved.has(edge.target)) {
+  for (const edge of diagram.internalEdges) {
+    const points = state.routes.get(edge) ?? edge.points;
+    if (points && moved.has(edge.source) && moved.has(edge.target)) {
       state.routes.set(edge, translateWaypoints(points, delta));
     }
   }
@@ -82,8 +84,8 @@ function makeRoom(state, diagram, figure, old, gaps) {
   const lanes = (diagram.scopes.get(figure.scope) ?? []).filter((lane) => lane.kind === 'lane');
   const siblingLane = (other) => memberLane(other, lanes, state.boxes);
   const siblings = (diagram.children.get(figure.parent) ?? []).filter((other) =>
-    other !== figure && other.kind !== 'lane' && !other.host &&
-    (figure.kind === 'pool' || siblingLane(other) === (figure.lane ?? null)));
+    other !== figure && !['lane', 'group', 'pool'].includes(other.kind) && !other.host &&
+    siblingLane(other) === (figure.lane ?? null));
   const expanded = { ...old };
 
   for (const [axis, span] of [['x', 'width'], ['y', 'height']]) {
@@ -281,7 +283,7 @@ function preferSpacing(candidate, base, best) {
 
 function planScope(diagram, state, scope, gaps) {
   const figures = diagram.scopes.get(scope) ?? [];
-  const members = figures.filter((figure) => figure.kind !== 'lane');
+  const members = figures.filter((figure) => figure.kind !== 'lane' && figure.kind !== 'group');
   const boxes = members.filter((figure) => figure.kind === 'node');
   if (!boxes.length) return { state };
   const lanes = figures.filter((figure) => figure.kind === 'lane')
@@ -461,7 +463,7 @@ function planScope(diagram, state, scope, gaps) {
   }
 
   const oldScope = state.boxes.get(scope);
-  if (oldScope && !sameBox(oldScope, best.plan.boxes.get(scope))) {
+  if (oldScope && scope.kind !== 'pool' && !sameBox(oldScope, best.plan.boxes.get(scope))) {
     makeRoom(best.plan, diagram, scope, oldScope, gaps);
   }
   return { state: best.plan };
@@ -470,23 +472,29 @@ function planScope(diagram, state, scope, gaps) {
 function newOverlap(state, original, figure, others) {
   const next = state.boxes.get(figure);
   return others.some((other) => other !== figure && other.parent === figure.parent &&
-    !other.host && other.kind !== 'lane' &&
-    (figure.kind === 'pool' || figure.lane === other.lane) &&
+    !other.host && other.kind !== 'lane' && other.kind !== 'group' &&
+    figure.lane === other.lane &&
     intersects(next, state.boxes.get(other)) &&
     !intersects(original.boxes.get(figure), original.boxes.get(other)));
 }
 
-function indexDiagram(figures, edges) {
+function indexDiagram(figures, edges, auxiliary) {
   return {
     edges,
+    internalEdges: [...edges, ...auxiliary],
     children: Map.groupBy(figures, (figure) => figure.parent),
     scopes: Map.groupBy(figures, (figure) => figure.scope),
     attachments: Map.groupBy(figures.filter((figure) => figure.host), (figure) => figure.host)
   };
 }
 
-export function planAlignment({ root, figures, edges }, gaps) {
-  const diagram = indexDiagram(figures, edges);
+function changes(state) {
+  const boxes = new Map([...state.boxes].filter(([figure, bounds]) => !sameBox(figure.box, bounds)));
+  return { boxes, routes: state.routes };
+}
+
+export function planAlignment({ root, figures, edges, messageFlows = [], auxiliary = [] }, gaps) {
+  const diagram = indexDiagram(figures, edges, auxiliary);
   const initial = { boxes: new Map(figures.map((figure) => [figure, figure.box])), routes: new Map() };
   const skipped = new Map();
   let state = initial;
@@ -502,7 +510,7 @@ export function planAlignment({ root, figures, edges }, gaps) {
       failures.set(scope, result.reason);
       return start;
     }
-    if (scope.kind !== 'root' && newOverlap(result.state, start, scope, diagram.children.get(scope.parent) ?? [])) {
+    if (scope.kind !== 'root' && scope.kind !== 'pool' && newOverlap(result.state, start, scope, diagram.children.get(scope.parent) ?? [])) {
       failures.set(scope, 'collisions');
       return start;
     }
@@ -517,8 +525,20 @@ export function planAlignment({ root, figures, edges }, gaps) {
     for (const [region, reason] of failures) skipped.set(region, reason);
   }
 
-  const boxes = new Map([...state.boxes].filter(([figure, bounds]) => !sameBox(figure.box, bounds)));
-  return { boxes, routes: state.routes, skipped: [...skipped].map(([scope, reason]) => ({ scope, reason })) };
+  if (pools.length > 1 || messageFlows.length) {
+    const collab = collaboration(figures, messageFlows);
+    const placed = placePools(collab, state, initial, gaps, (next, pool, delta) => moveTree(next, diagram, pool, delta));
+    if (placed.state) {
+      state = { boxes: placed.state.boxes, routes: new Map([...placed.state.routes, ...placed.routes]) };
+    } else {
+      skipped.set(root, placed.reason === 'stability' ? 'poolStability' : 'poolRouting');
+      const nonOverlapping = collab.pools.every((pool, index) => collab.pools.slice(index + 1)
+        .every((other) => !intersects(state.boxes.get(pool), state.boxes.get(other))));
+      const routes = nonOverlapping && routeMessages(collab, state, initial);
+      state = routes ? { boxes: state.boxes, routes: new Map([...state.routes, ...routes]) } : initial;
+    }
+  }
+  return { ...changes(state), skipped: [...skipped].map(([scope, reason]) => ({ scope, reason })) };
 }
 
 export function alignmentSelection(diagram, elements) {
@@ -527,6 +547,11 @@ export function alignmentSelection(diagram, elements) {
   const figures = selected.map((element) => byElement.get(element));
   const isContainer = (figure) => figure.kind === 'pool' || figure.kind === 'lane' || figure.expanded;
   if (!figures.length) return { reason: 'Выберите пул, дорожку, раскрытый подпроцесс или несколько фигур.' };
+  const pools = figures.filter((figure) => figure?.kind === 'pool');
+  if (pools.length && pools.length !== figures.length) {
+    return { reason: 'Выберите только пулы или фигуры одного процесса' };
+  }
+  if (pools.length > 1) return { pools: new Set(pools) };
   if (figures.some((figure) => !figure)) return { reason: 'Выделение должно состоять из фигур.' };
   if (figures.some((figure) => figure.host && !figures.includes(figure.host))) {
     return { reason: 'Выберите фигуру, к которой прикреплено граничное событие.' };
@@ -624,9 +649,21 @@ function unitsOverlap(units, boxes) {
     parts.some((part) => other.parts.some((neighbor) => intersects(boxes.get(part), boxes.get(neighbor))))));
 }
 
-export function planSelection({ figures, edges }, { scope, members }, gaps) {
-  const diagram = indexDiagram(figures, edges);
+export function planSelection(snapshot, selection, gaps) {
+  const { figures, edges, messageFlows = [], auxiliary = [] } = snapshot;
+  const diagram = indexDiagram(figures, edges, auxiliary);
+  const collab = collaboration(figures, messageFlows);
   const initial = { boxes: new Map(figures.map((figure) => [figure, figure.box])), routes: new Map() };
+  if (selection.pools) {
+    const placed = placePools(collab, initial, initial, gaps,
+      (next, pool, delta) => moveTree(next, diagram, pool, delta), selection.pools);
+    if (!placed.state) return { reason: placed.reason === 'stability' ? 'poolStability' : 'poolRouting' };
+    return changes({ boxes: placed.state.boxes, routes: new Map([...placed.state.routes, ...placed.routes]) });
+  }
+  return planProcessSelection(snapshot, diagram, collab, initial, selection, gaps);
+}
+
+function planProcessSelection({ figures, edges }, diagram, collab, initial, { scope, members }, gaps) {
   const flip = scope.horizontal === false;
   const local = flip ? transpose : (box) => box;
   const world = flip ? ({ x, y }) => ({ x: y, y: x }) : (delta) => delta;
@@ -659,11 +696,6 @@ export function planSelection({ figures, edges }, { scope, members }, gaps) {
     source: byFigure.get(edge.source.host ?? edge.source), target: byFigure.get(edge.target.host ?? edge.target) }))
     .filter(({ source, target }) => source && target);
   const subprocesses = members.filter((figure) => figure.expanded);
-  for (const edge of edges) {
-    if (edge.points && subprocesses.some((figure) => descendantOf(edge.source, figure) && descendantOf(edge.target, figure))) {
-      initial.routes.set(edge, edge.points);
-    }
-  }
   let reason = 'collisions';
 
   function* placements(deltas) {
@@ -701,11 +733,18 @@ export function planSelection({ figures, edges }, { scope, members }, gaps) {
     }
   }
 
+  function allRoutes(candidate, movableParts) {
+    const routes = fixedRoutes(diagram, candidate.state, candidate.boxes, movableParts);
+    if (!routes) return null;
+    const messages = routeMessages(collab, candidate.state, initial, { selection: true });
+    return messages && new Map([...candidate.state.routes, ...routes, ...messages]);
+  }
+
   let base;
   for (const compact of [false, true]) {
     const deltas = layoutProcess(units, graph, minimums, { compact });
     for (const candidate of placements(deltas)) {
-      const routes = fixedRoutes(diagram, candidate.state, candidate.boxes);
+      const routes = allRoutes(candidate);
       if (routes) {
         base = { ...candidate, routes, compact };
         break;
@@ -717,6 +756,7 @@ export function planSelection({ figures, edges }, { scope, members }, gaps) {
   if (!base) return { reason };
   if (spacing.maxX === undefined && spacing.maxY === undefined) return { boxes: base.boxes, routes: base.routes };
 
+  const sequence = new Set(edges);
   const { layouts, excess } = spacingLayouts(units, graph, spacing, { compact: base.compact });
   const movableParts = new Set(figures.filter((figure) => movable.has(figure.host ?? figure) ||
     subprocesses.some((subprocess) => descendantOf(figure, subprocess))));
@@ -724,7 +764,7 @@ export function planSelection({ figures, edges }, { scope, members }, gaps) {
     total + Math.abs(next.x - box.x) + Math.abs(next.y - box.y), 0);
   const baseline = { ...base, excess: excess(base.state, local) };
   if (!baseline.excess) return { boxes: base.boxes, routes: base.routes };
-  const baseRoutes = fixedRoutes(diagram, base.state, base.boxes, movableParts);
+  const baseRoutes = allRoutes(base, movableParts);
   if (!baseRoutes) return { boxes: base.boxes, routes: base.routes };
   baseline.cost = [...routeCost(baseRoutes.values()), movement(base.boxes)];
   const fixedUnits = stationary.filter((figure) => figure.kind === 'node').map((figure) => ({
@@ -743,12 +783,12 @@ export function planSelection({ figures, edges }, { scope, members }, gaps) {
           })) continue;
       candidate.excess = excess(candidate.state, local);
       if (candidate.excess >= baseline.excess) continue;
-      const routes = fixedRoutes(diagram, candidate.state, candidate.boxes, movableParts);
+      const routes = allRoutes(candidate, movableParts);
       if (!routes) continue;
       candidate.cost = [...routeCost(routes.values()), movement(candidate.boxes)];
       if (preferSpacing(candidate, baseline, best)) {
-        best = { ...candidate, routes: new Map([...routes].filter(([{ source, target }]) =>
-          candidate.boxes.has(source) || candidate.boxes.has(target))) };
+        best = { ...candidate, routes: new Map([...routes].filter(([edge]) =>
+          !sequence.has(edge) || candidate.boxes.has(edge.source) || candidate.boxes.has(edge.target))) };
       }
       break;
     }
