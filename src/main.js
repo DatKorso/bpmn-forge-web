@@ -1,8 +1,10 @@
 import Modeler from 'bpmn-js/lib/Modeler';
 import { getDi } from 'bpmn-js/lib/util/ModelUtil';
+import colorPicker from 'bpmn-js-color-picker';
 import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css';
+import 'bpmn-js-color-picker/colors/color-picker.css';
 import autoAlign from './auto-align.js';
 import { reportAlignment, reportOperation, resetAlignment } from './footer.js';
 import russian from './russian.js';
@@ -70,7 +72,7 @@ async function loadDiagram(readXML, nextFilename, message) {
   let next;
   try {
     // Keep the live model and its history until the new XML has rendered successfully.
-    next = new Modeler({ container: host, additionalModules: [autoAlign, russian] });
+    next = new Modeler({ container: host, additionalModules: [autoAlign, russian, colorPicker] });
     keepFractionalBounds(next);
     const { warnings } = await next.importXML(await readXML());
     const canvas = next.get('canvas');
