@@ -402,3 +402,116 @@ test('declines a fixed selection atomically if spacing or routing cannot fit', (
   assert.deepEqual(d.figures.map((figure) => figure.box), before);
   assert.deepEqual(flow.points, [point(275, 67), point(360, 205)]);
 });
+
+test('caps straight flows on each axis and leaves their routes stable on repeated alignment', () => {
+  for (const axis of ['x', 'y']) {
+    const d = diagram();
+    const a = d.add('a', box(0, 0));
+    const b = d.add('b', axis === 'x' ? box(400, 0) : box(0, 400));
+    const flow = d.connect(a, b);
+    const limits = { x: 60, y: 40, maxX: 120, maxY: 80 };
+    const plan = planAlignment(d, limits);
+    assert.deepEqual(plan.skipped, []);
+    assert.equal(finalBox(plan, b)[axis], axis === 'x' ? 220 : 140);
+    assert.equal(plan.routes.get(flow).length, 2);
+    apply(plan);
+    const repeat = planAlignment(d, limits);
+    assert.equal(repeat.boxes.size, 0);
+    assert.deepEqual(repeat.routes, plan.routes);
+  }
+});
+
+test('uses world-axis maximums in a vertical pool with a lane', () => {
+  const d = diagram();
+  const pool = d.add('pool', box(0, 0, 380, 750), { kind: 'pool', horizontal: false, header: 30 });
+  const lane = d.add('lane', box(0, 30, 380, 720), { kind: 'lane', scope: pool, header: 30 });
+  const a = d.add('a', box(100, 110), { scope: pool, lane });
+  const b = d.add('b', box(100, 510), { scope: pool, lane });
+  const flow = d.connect(a, b);
+  const limits = { x: 60, y: 40, maxX: 120, maxY: 80 };
+  for (const plan of [planAlignment(d, limits), planSelection(d, { scope: pool, members: [a, b] }, limits)]) {
+    assert.equal(finalBox(plan, b).y - finalBox(plan, a).y - a.box.height, 80);
+    assert.equal(plan.routes.get(flow).length, 2);
+    assert.equal(plan.boxes.has(pool), false);
+    assert.equal(plan.boxes.has(lane), false);
+  }
+});
+
+test('shortens a selected gap and reroutes its incident flow to a fixed task', () => {
+  const d = diagram();
+  const a = d.add('a', box(0, 0));
+  const b = d.add('b', box(400, 0));
+  const fixed = d.add('fixed', box(780, 0));
+  const internal = d.connect(a, b);
+  const incident = d.connect(b, fixed);
+  const selected = { scope: d.root, members: [a, b] };
+  const limits = { x: 60, y: 40, maxX: 120, maxY: 80 };
+  const plan = planSelection(d, selected, limits);
+  assert.equal(finalBox(plan, b).x, 220);
+  assert.equal(plan.boxes.has(fixed), false);
+  assert.deepEqual(plan.routes.get(internal), [point(100, 30), point(220, 30)]);
+  assert.deepEqual(plan.routes.get(incident), [point(320, 30), point(780, 30)]);
+  apply(plan);
+  const repeat = planSelection(d, selected, limits);
+  assert.equal(repeat.boxes.size, 0);
+  assert.equal(repeat.routes.size, 0);
+});
+
+test('keeps a larger selected gap when shortening would bend a straight flow to a fixed task', () => {
+  const d = diagram();
+  const a = d.add('a', box(0, 0));
+  const b = d.add('b', box(400, 0));
+  const fixed = d.add('fixed', box(400, 220));
+  d.connect(a, b);
+  const incident = d.connect(b, fixed);
+  const selected = { scope: d.root, members: [a, b] };
+  const limits = { x: 60, y: 40, maxX: 120 };
+  const plan = planSelection(d, selected, limits);
+  assert.equal(plan.boxes.size, 0);
+  assert.equal(plan.routes.size, 0);
+  assert.equal(finalBox(plan, b).x, 400);
+  assert.equal(incident.points, undefined);
+});
+
+test('shortens only the vertical gap when horizontal compression collides with a route obstacle', () => {
+  const d = diagram();
+  const a = d.add('a', box(0, 0));
+  const b = d.add('b', box(400, 0));
+  const c = d.add('c', box(0, 400));
+  const obstacle = d.add('obstacle', box(230, -10, 60, 80), { kind: 'artifact' });
+  const flow = d.connect(a, b);
+  const vertical = d.connect(a, c);
+  const limits = { x: 60, y: 40, maxX: 120, maxY: 80 };
+  const plan = planAlignment(d, limits);
+  assert.deepEqual(plan.skipped, []);
+  assert.deepEqual([...plan.boxes.keys()], [c]);
+  assert.equal(finalBox(plan, c).y, 140);
+  assert.ok(plan.routes.get(flow).some(({ y }) => y < obstacle.box.y || y > obstacle.box.y + obstacle.box.height));
+  assert.equal(plan.routes.get(vertical).length, 2);
+  apply(plan);
+  const repeat = planAlignment(d, limits);
+  assert.equal(repeat.boxes.size, 0);
+  assert.deepEqual(repeat.routes, plan.routes);
+});
+
+test('keeps the default branch straight and repeats a compact split and merge without changes', () => {
+  const d = diagram();
+  const split = d.add('split', box(0, 100, 50, 50));
+  const main = d.add('main', box(350, 85, 100, 80));
+  const side = d.add('side', box(350, 350, 100, 80));
+  const merge = d.add('merge', box(700, 100, 50, 50));
+  const direct = d.connect(split, main, true);
+  d.connect(main, merge);
+  d.connect(split, side);
+  d.connect(side, merge);
+  const limits = { x: 60, y: 40, maxX: 120, maxY: 80 };
+  const plan = planAlignment(d, limits);
+  assert.deepEqual(plan.skipped, []);
+  assert.equal(plan.routes.get(direct).length, 2);
+  assert.equal(finalBox(plan, side).y - finalBox(plan, main).y - main.box.height, 80);
+  assert.ok(finalBox(plan, merge).x - finalBox(plan, split).x < merge.box.x - split.box.x);
+  apply(plan);
+  const repeat = planAlignment(d, limits);
+  assert.equal(repeat.boxes.size, 0);
+  assert.deepEqual(repeat.routes, plan.routes);
+});

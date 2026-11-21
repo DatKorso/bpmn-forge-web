@@ -27,6 +27,8 @@ const workspace = byId('workspace');
 const fileInput = byId('file');
 const gapX = byId('gap-x');
 const gapY = byId('gap-y');
+const maxGapX = byId('max-gap-x');
+const maxGapY = byId('max-gap-y');
 const alignSelection = byId('align-selection');
 const selectionReason = byId('selection-reason');
 const documentName = byId('document-name');
@@ -154,22 +156,34 @@ byId('download').addEventListener('click', async () => {
   }
 });
 
-function validateGap(input) {
-  input.setCustomValidity('');
-  if (input.validity.badInput || !Number.isSafeInteger(input.valueAsNumber) || input.valueAsNumber < 0) {
-    input.setCustomValidity('Введите целое число от нуля.');
+function validateGaps() {
+  for (const [min, max] of [[gapX, maxGapX], [gapY, maxGapY]]) {
+    const value = min.valueAsNumber;
+    const validMin = Number.isSafeInteger(value) && value >= 0;
+    min.setCustomValidity(validMin ? '' : 'Введите целое число от нуля.');
+    max.min = validMin ? String(value) : '0';
+    const optional = !max.value && !max.validity.badInput;
+    const validMax = Number.isSafeInteger(max.valueAsNumber) && max.valueAsNumber >= Number(max.min);
+    max.setCustomValidity(optional || validMax ? '' : 'Введите целое число не меньше минимума.');
   }
-}
-
-for (const input of [gapX, gapY]) {
-  input.addEventListener('input', () => validateGap(input));
 }
 
 const alignment = byId('alignment');
 alignment.addEventListener('submit', (event) => event.preventDefault());
-const alignmentGaps = () => ({ x: gapX.valueAsNumber, y: gapY.valueAsNumber });
+byId('gap-settings').addEventListener('input', validateGaps);
+function checkGaps() {
+  validateGaps();
+  return reportGapValidity();
+}
+
+const alignmentGaps = () => ({
+  x: gapX.valueAsNumber,
+  y: gapY.valueAsNumber,
+  maxX: maxGapX.value ? maxGapX.valueAsNumber : undefined,
+  maxY: maxGapY.value ? maxGapY.valueAsNumber : undefined
+});
 byId('align').addEventListener('click', () => {
-  if (busy || !modeler || !reportGapValidity()) return;
+  if (busy || !modeler || !checkGaps()) return;
 
   try {
     const { moved, resized, rerouted, skipped } = modeler.get('autoAlign').run(alignmentGaps());
@@ -185,7 +199,7 @@ byId('align').addEventListener('click', () => {
 });
 
 alignSelection.addEventListener('click', () => {
-  if (alignSelection.getAttribute('aria-disabled') === 'true' || !reportGapValidity()) return;
+  if (busy || !modeler || !checkGaps() || alignSelection.getAttribute('aria-disabled') === 'true') return;
   try {
     const selection = modeler.get('selection').get();
     const { moved, rerouted, reason } = modeler.get('autoAlign').runSelection(selection, alignmentGaps());

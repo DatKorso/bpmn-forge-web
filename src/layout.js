@@ -323,29 +323,44 @@ function extent(units, axis) {
   };
 }
 
-function distance(previous, next, minimum, compact) {
-  return previous.after - next.before + (compact ? minimum : Math.max(minimum, next.start - previous.end));
+function distance(previous, next, { minimum, maximum, compact }) {
+  const padding = previous.after - next.before;
+  const lower = ceilGrid(padding + minimum);
+  return compact ? lower : Math.max(lower, Math.min(ceilGrid(padding + next.start - previous.end),
+    floorGrid(padding + (maximum ?? Infinity))));
 }
 
-function placeAxis(groups, axis, minimum, crossAxis, compact) {
+function upperDistance(previous, next, maximum) {
+  return floorGrid(previous.after - next.before + (maximum ?? Infinity));
+}
+
+function placeAxis(groups, axis, crossAxis, spacing) {
+  const { compact, maximum, minimum, neighbors } = spacing;
   const positions = new Map();
   const previousByLine = new Map();
   let previous;
 
   for (const group of groups) {
     const edges = extent(group.units, axis);
-    let position = compact && previous
-      ? -Infinity
-      : snap(group.anchor ?? (group.first + group.last) / 2);
+    const anchor = snap(group.anchor ?? (group.first + group.last) / 2);
+    let lower = -Infinity;
+    let upper = Infinity;
 
-    if (previous) {
-      position = Math.max(
-        position,
-        previous.position + ceilGrid(distance(previous.edges, edges, minimum, compact)),
+    function constrain(last, units, edges) {
+      const near = maximum !== undefined && last.units.some((a) => units.some((b) => a.lane === b.lane));
+      lower = Math.max(lower,
+        last.position + distance(last.edges, edges,
+          maximum === undefined || near ? spacing : { minimum, compact: true }),
         // Keep distinct rows or columns distinct on subsequent runs.
-        previous.position + ceilGrid(TOLERANCE + 1)
+        last.position + ceilGrid(TOLERANCE + 1)
       );
+      if (near) {
+        upper = Math.min(upper, last.position + upperDistance(last.edges, edges, maximum));
+        neighbors?.(last.units, units);
+      }
     }
+
+    if (previous) constrain(previous, group.units, edges);
 
     const lines = new Map();
     for (const unit of group.units) {
@@ -358,53 +373,59 @@ function placeAxis(groups, axis, minimum, crossAxis, compact) {
     for (const [line, units] of lines) {
       const edges = extent(units, axis);
       const last = previousByLine.get(line);
-      if (last) position = Math.max(position, last.position + ceilGrid(distance(last.edges, edges, minimum, compact)));
+      if (last) constrain(last, units, edges);
       lineEdges.set(line, edges);
     }
 
+    const position = Math.max(lower, Math.min(compact && previous ? -Infinity : anchor, upper));
     for (const [line, edges] of lineEdges) {
-      previousByLine.set(line, { position, edges });
+      previousByLine.set(line, { position, edges, units: lines.get(line) });
     }
     for (const unit of group.units) positions.set(unit, position);
-    previous = { position, edges };
+    previous = { position, edges, units: group.units };
   }
 
   return positions;
 }
 
-function placeColumns(rows, branches, branchUnits, columns, flows, minimum, compact) {
+function placeColumns(rows, branches, branchUnits, columns, flows, spacing) {
+  const { compact, minimum, maximum, neighbors } = spacing;
   const groups = new Set([...columns].filter(([unit]) => !branchUnits.has(unit)).map(([, group]) => group));
   const incoming = new Map([...groups].map((group) => [group, []]));
   const edges = [];
   const edgesByUnit = new Map([...columns.keys()].map((unit) => [unit, extent([unit], 'x')]));
-  const between = (source, target) => Math.max(ceilGrid(TOLERANCE + 1),
-    ceilGrid(distance(edgesByUnit.get(source), edgesByUnit.get(target), minimum, compact))
-  );
-  function constrain(source, target, gap) {
+  const between = (source, target, rules) =>
+    Math.max(ceilGrid(TOLERANCE + 1), distance(edgesByUnit.get(source), edgesByUnit.get(target), rules));
+  const branchDistance = (source, target) => between(source, target,
+    source.lane === target.lane ? spacing : { minimum, compact });
+  function constrain(source, target, span, adjacent = false) {
     const from = columns.get(source);
     const to = columns.get(target);
     if (from === to) return;
     edges.push([from, to]);
-    incoming.get(to).push({ from, gap });
+    incoming.get(to).push({ from, source, target, span, adjacent });
   }
 
   for (const { source, target } of flows) {
     if (!branchUnits.has(source) && !branchUnits.has(target)) {
-      constrain(source, target, between(source, target));
+      constrain(source, target);
     }
   }
 
   const placements = branches.map(({ split, merge, units }) => {
     const offsets = [0];
     for (let index = 1; index < units.length; index++) {
-      offsets.push(offsets.at(-1) + between(units[index - 1], units[index]));
+      const source = units[index - 1];
+      const target = units[index];
+      offsets.push(offsets.at(-1) + branchDistance(source, target));
+      if (source.lane === target.lane) neighbors?.([source], [target]);
     }
 
     const left = Math.min(...units.map((unit, index) => offsets[index] + edgesByUnit.get(unit).before));
     const right = Math.max(...units.map((unit, index) => offsets[index] + edgesByUnit.get(unit).after));
     const midpoint = (left + right) / 2;
-    const startGap = between(split, units[0]);
-    const endGap = offsets.at(-1) + between(units.at(-1), merge);
+    const startGap = branchDistance(split, units[0]);
+    const endGap = offsets.at(-1) + branchDistance(units.at(-1), merge);
     // Use the smallest span whose snapped midpoint meets both edge gaps.
     let span = ceilGrid(2 * Math.max(startGap + midpoint, endGap - midpoint) - GRID);
     const start = snap(span / 2 - midpoint);
@@ -423,7 +444,7 @@ function placeColumns(rows, branches, branchUnits, columns, flows, minimum, comp
     for (let index = 1; index < neighbors.length; index++) {
       const source = neighbors[index - 1];
       const target = neighbors[index];
-      constrain(source, target, between(source, target));
+      constrain(source, target, undefined, true);
     }
   }
 
@@ -431,10 +452,20 @@ function placeColumns(rows, branches, branchUnits, columns, flows, minimum, comp
   const x = new Map();
   const anchor = compact ? Math.min(...preferred.map((column) => column.anchor)) : null;
   for (const group of preferred) {
-    let position = snap(anchor ?? group.anchor);
-    for (const { from, gap } of incoming.get(group)) {
-      position = Math.max(position, positions.get(from) + gap);
+    let lower = -Infinity;
+    let upper = Infinity;
+    for (const { from, source, target, span, adjacent } of incoming.get(group)) {
+      const near = source.lane === target.lane && (adjacent || rank.get(group) === rank.get(from) + 1);
+      // A link spanning other columns or crossing lanes sets a lower bound.
+      const rules = maximum === undefined || near ? spacing : { minimum, compact: true };
+      lower = Math.max(lower, positions.get(from) + (span ?? between(source, target, rules)));
+      if (span === undefined && near && maximum !== undefined) {
+        upper = Math.min(upper, positions.get(from) +
+          upperDistance(edgesByUnit.get(source), edgesByUnit.get(target), maximum));
+        neighbors?.([source], [target]);
+      }
     }
+    const position = Math.max(lower, Math.min(snap(anchor ?? group.anchor), upper));
     positions.set(group, position);
     for (const unit of group.units) x.set(unit, position);
   }
@@ -496,16 +527,20 @@ function fitAxis(start, end, min, max) {
 
 export function layoutRegion(units, limits, gaps, flows = [], options = {}) {
   if (!units.length) return new Map();
-  const { compact, joinAcrossLanes, sharedColumns } = options;
+  const { compact, joinAcrossLanes, sharedColumns, neighbors } = options;
+  const horizontal = { minimum: gaps.x, maximum: gaps.maxX, compact: compact && gaps.maxX === undefined,
+    neighbors: neighbors?.x };
+  const vertical = { minimum: gaps.y, maximum: gaps.maxY, compact: compact && gaps.maxY === undefined,
+    neighbors: neighbors?.y };
   const forward = forwardFlows(units, flows);
   const columns = verticalColumns(units, forward, joinAcrossLanes);
   const { rows, branches, branchUnits } = clusterRows(units, forward, findBranchCandidates(forward), columns);
   const rowIndex = indexGroups(rows);
   const x = forward.length
-    ? placeColumns(rows, branches, branchUnits, columns, forward, gaps.x, compact)
-    : placeAxis(clusterColumns(units, rowIndex), 'x', gaps.x, rowIndex, compact);
+    ? placeColumns(rows, branches, branchUnits, columns, forward, horizontal)
+    : placeAxis(clusterColumns(units, rowIndex), 'x', rowIndex, horizontal);
   const packed = options.reuseBranchRows ? reuseBranchRows(rows, branches, sharedColumns ?? x, gaps.x) : rows;
-  const y = placeAxis(packed, 'y', gaps.y, x, compact);
+  const y = placeAxis(packed, 'y', x, vertical);
   const deltas = new Map(units.map((unit) => [unit, {
     x: x.get(unit) - center(unit.shape, 'x'),
     y: y.get(unit) - center(unit.shape, 'y')
@@ -534,11 +569,12 @@ export function layoutRegion(units, limits, gaps, flows = [], options = {}) {
 const unbounded = { left: -Infinity, right: Infinity, top: -Infinity, bottom: Infinity };
 
 export function layoutProcess(units, flows, gaps, options = {}) {
-  const horizontal = layoutRegion(units, unbounded, gaps, flows, { ...options, joinAcrossLanes: true });
+  const byLane = Map.groupBy(units, (unit) => unit.lane);
+  const horizontal = layoutRegion(units, unbounded, byLane.size <= 1 ? gaps : { ...gaps, maxY: undefined }, flows,
+    { ...options, joinAcrossLanes: true, neighbors: byLane.size <= 1 ? options.neighbors : { x: options.neighbors?.x } });
   if (!horizontal) return null;
 
-  const byLane = Map.groupBy(units, (unit) => unit.lane);
-  if (byLane.size === 1) return horizontal;
+  if (byLane.size <= 1) return horizontal;
 
   // Columns come from the whole graph. A lane has its own row ordering and spacing.
   const deltas = new Map();
@@ -547,7 +583,8 @@ export function layoutProcess(units, flows, gaps, options = {}) {
     : undefined;
   for (const [lane, members] of byLane) {
     const local = flows.filter(({ source, target }) => source.lane === lane && target.lane === lane);
-    const rows = layoutRegion(members, unbounded, gaps, local, { ...options, sharedColumns });
+    const rows = layoutRegion(members, unbounded, gaps, local,
+      { ...options, sharedColumns, neighbors: { y: options.neighbors?.y } });
     if (!rows) return null;
     for (const unit of members) deltas.set(unit, { x: horizontal.get(unit).x, y: rows.get(unit).y });
   }

@@ -248,3 +248,48 @@ test('moves a near-vertical bypass right when its alternate path needs more colu
     assert.deepEqual(delta, { x: 0, y: 0 });
   }
 });
+
+test('limits each enabled axis and preserves gaps within the permitted range', () => {
+  const units = [unit('a', 0, 0), unit('b', 400, 0), unit('c', 0, 400), unit('d', 400, 400)];
+  for (const [limits, expected] of [
+    [{}, [300, 320]],
+    [{ maxX: 120 }, [120, 320]],
+    [{ maxY: 100 }, [300, 100]],
+    [{ maxX: 120, maxY: 100 }, [120, 100]]
+  ]) {
+    const [a, b, c] = apply(units, layoutRegion(units, unbounded, { ...gaps, ...limits }))
+      .map(({ shape }) => shape);
+    assert.deepEqual([b.x - a.x - a.width, c.y - a.y - a.height], expected);
+  }
+
+  const inRange = [unit('a', 0, 0), unit('b', 200, 160)];
+  const deltas = layoutRegion(inRange, unbounded, { ...gaps, maxX: 120, maxY: 100 });
+  assert.deepEqual([...deltas.values()], [{ x: 0, y: 0 }, { x: 0, y: 0 }]);
+});
+
+test('uses the attached event edge and favors the minimum when a maximum cannot fit the grid', () => {
+  const units = [unit('a', 0, 0, 100, 80, [{ x: 90, y: 20, width: 24, height: 24 }]), unit('b', 400, 0)];
+  const flows = flowsFor(units, [['a', 'b']]);
+  for (const [min, max, expected] of [[60, 120, 116], [58, 62, 66]]) {
+    const [a, b] = apply(units, layoutRegion(units, unbounded, { x: min, y: 40, maxX: max }, flows));
+    assert.equal(b.area.x - a.area.x - a.area.width, expected);
+  }
+});
+
+test('keeps the minimum space for branches and never caps a shortcut spanning multiple columns', () => {
+  const units = [
+    unit('split', 0, 0), unit('main', 300, 0), unit('merge', 650, 0),
+    unit('branch-1', 200, 250), unit('branch-2', 470, 250)
+  ];
+  const flows = flowsFor(units, [
+    ['split', 'main', true], ['main', 'merge'], ['split', 'branch-1'], ['branch-1', 'branch-2'],
+    ['branch-2', 'merge'], ['split', 'merge']
+  ]);
+  const [split, main, merge, first, second] = apply(units,
+    layoutRegion(units, unbounded, { x: 60, y: 40, maxX: 120, maxY: 80 }, flows)).map(({ shape }) => shape);
+  assert.ok(merge.x - split.x - split.width > 120);
+  assert.ok(main.x - split.x - split.width >= 60);
+  assert.ok(first.x - split.x - split.width >= 60);
+  assert.ok(second.x - first.x - first.width >= 60);
+  assert.ok(merge.x - second.x - second.width >= 60);
+});

@@ -8,6 +8,9 @@ const right = (rect) => rect.x + rect.width;
 const bottom = (rect) => rect.y + rect.height;
 const sameBox = (a, b) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 const transpose = ({ x, y, width, height }) => ({ x: y, y: x, width: height, height: width });
+const localSpacing = (gaps, flip) => flip
+  ? { x: gaps.y, y: gaps.x, maxX: gaps.maxY, maxY: gaps.maxX }
+  : gaps;
 
 function descendantOf(figure, parent) {
   for (let ancestor = figure.parent; ancestor; ancestor = ancestor.parent) {
@@ -217,14 +220,63 @@ function scopeCollisions(state, original, members, lanes, scope) {
   return false;
 }
 
-function respectsGaps(units, state, gaps, toLocal) {
-  const boxes = units.map(({ figure, lane }) => ({ lane, box: toLocal(state.boxes.get(figure)) }));
-  return boxes.every(({ lane, box }, index) => boxes.slice(index + 1).every(({ lane: otherLane, box: other }) => {
-    if (lane !== otherLane) return true;
-    const dx = Math.max(box.x - right(other), other.x - right(box));
-    const dy = Math.max(box.y - bottom(other), other.y - bottom(box));
-    return dx >= gaps.x || dy >= gaps.y;
+function hasClearance(a, b, gaps) {
+  const dx = Math.max(a.x - right(b), b.x - right(a));
+  const dy = Math.max(a.y - bottom(b), b.y - bottom(a));
+  return dx >= gaps.x || dy >= gaps.y;
+}
+
+function respectsGaps(units, state, gaps, toLocal, includeAttachments = false) {
+  const boxes = units.map(({ figure, parts, lane }) => ({
+    lane, box: toLocal(includeAttachments
+      ? boundsOf(parts.map((part) => state.boxes.get(part)))
+      : state.boxes.get(figure))
   }));
+  return boxes.every(({ lane, box }, index) => boxes.slice(index + 1).every(({ lane: otherLane, box: other }) =>
+    lane !== otherLane || hasClearance(box, other, gaps)));
+}
+
+function spacingLayouts(units, graph, spacing, options) {
+  const { x, y, maxX, maxY } = spacing;
+  const limits = [];
+  const seen = new Set();
+  const track = (axis, maximum) => maximum === undefined ? undefined : (before, after) => {
+    const ids = (group) => group.map(({ figure }) => figure.id).sort();
+    const key = JSON.stringify([axis, ids(before), ids(after)]);
+    if (seen.has(key)) return;
+    seen.add(key);
+    limits.push({ axis, maximum, before, after });
+  };
+  const neighbors = { x: track('x', maxX), y: track('y', maxY) };
+  const layouts = [layoutProcess(units, graph, spacing, { ...options, neighbors })];
+  if (maxX !== undefined && maxY !== undefined) {
+    layouts.push(layoutProcess(units, graph, { x, y, maxX }, options),
+      layoutProcess(units, graph, { x, y, maxY }, options));
+  }
+
+  function excess(state, toLocal) {
+    const areas = new Map(units.map((unit) => [
+      unit, toLocal(boundsOf(unit.parts.map((figure) => state.boxes.get(figure))))
+    ]));
+    return limits.reduce((total, { axis, maximum, before, after }) => {
+      const end = axis === 'x' ? right : bottom;
+      const start = Math.min(...after.map((unit) => areas.get(unit)[axis]));
+      const gap = start - Math.max(...before.map((unit) => end(areas.get(unit))));
+      return total + Math.max(0, gap - maximum);
+    }, 0);
+  }
+
+  return { layouts, excess };
+}
+
+function spacingCost({ cost, excess }) {
+  return [...cost.slice(0, 3), excess, ...cost.slice(3)];
+}
+
+function preferSpacing(candidate, base, best) {
+  return candidate.excess < base.excess &&
+    compareCosts(candidate.cost.slice(0, 3), base.cost.slice(0, 3)) <= 0 &&
+    compareCosts(spacingCost(candidate), spacingCost(best)) < 0;
 }
 
 function planScope(diagram, state, scope, gaps) {
@@ -245,7 +297,8 @@ function planScope(diagram, state, scope, gaps) {
   };
   const area = (figure) => boundsOf([figure, ...attachments(diagram, figure)].map(relative));
   const units = boxes.map((figure) => ({
-    figure, lane: figure.lane, shape: { ...relative(figure), id: figure.id, type: figure.type },
+    figure, lane: figure.lane, parts: [figure, ...attachments(diagram, figure)],
+    shape: { ...relative(figure), id: figure.id, type: figure.type },
     area: area(figure)
   }));
   const unitByFigure = new Map(units.map((unit) => [unit.figure, unit]));
@@ -256,7 +309,8 @@ function planScope(diagram, state, scope, gaps) {
       target: unitByFigure.get(edge.target.host ?? edge.target), isDefault: edge.isDefault
     }));
   const forward = new Set(forwardFlows(units, graph));
-  const spacing = flip ? { x: gaps.y, y: gaps.x } : gaps;
+  const spacing = localSpacing(gaps, flip);
+  const minimums = { x: spacing.x, y: spacing.y };
 
   function prepare(deltas) {
     if (!deltas) return null;
@@ -315,11 +369,11 @@ function planScope(diagram, state, scope, gaps) {
     return { ...candidate, cost: [...routeCost(routes.values()), movement] };
   }
 
-  const regular = layoutProcess(units, graph, spacing);
+  const regular = layoutProcess(units, graph, minimums);
   const base = prepare(regular);
   let best = base && !base.growth ? evaluate(base) : null;
   if (!best) {
-    const compact = layoutProcess(units, graph, spacing, { compact: true });
+    const compact = layoutProcess(units, graph, minimums, { compact: true });
     const compressed = prepare(compact);
     const preferCompact = compressed && (!base || compressed.growth < base.growth);
     best = !base || base.growth
@@ -376,7 +430,7 @@ function planScope(diagram, state, scope, gaps) {
   const height = ({ plan }) => boundsOf(members.filter((figure) => figure.kind === 'node' || figure.host)
     .map((figure) => toLocal(plan.boxes.get(figure)))).height;
   const packed = [...outgoing.values()].some((flows) => flows.length > 1)
-    ? prepare(layoutProcess(units, graph, spacing, { compact, reuseBranchRows: true }))
+    ? prepare(layoutProcess(units, graph, minimums, { compact, reuseBranchRows: true }))
     : null;
   if (packed && packed.growth <= best.growth && height(packed) < height(best) &&
       respectsGaps(units, packed.plan, spacing, toLocal)) {
@@ -384,6 +438,26 @@ function planScope(diagram, state, scope, gaps) {
     // A shorter drawing is worthwhile when crossings, shared lines and bends
     // are at least as good by the usual routing priorities.
     if (tested && compareCosts(tested.cost.slice(0, 3), best.cost.slice(0, 3)) <= 0) best = tested;
+  }
+
+  if (spacing.maxX !== undefined || spacing.maxY !== undefined) {
+    const { layouts, excess } = spacingLayouts(units, graph, spacing, { compact });
+    const baseline = { ...best, excess: excess(best.plan, toLocal) };
+    best = baseline;
+    const containers = frame ? [scope, ...lanes] : lanes;
+    for (const deltas of layouts) {
+      const candidate = prepare(deltas);
+      if (!candidate || !respectsGaps(units, candidate.plan, spacing, toLocal, true) ||
+          containers.some((container) => {
+            const before = baseline.plan.boxes.get(container);
+            const after = candidate.plan.boxes.get(container);
+            return after.width > before.width || after.height > before.height;
+          })) continue;
+      candidate.excess = excess(candidate.plan, toLocal);
+      if (candidate.excess >= baseline.excess) continue;
+      const tested = evaluate(candidate);
+      if (tested && preferSpacing(tested, baseline, best)) best = tested;
+    }
   }
 
   const oldScope = state.boxes.get(scope);
@@ -499,8 +573,9 @@ function offsets(areas, axis, obstacles) {
     .sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
 }
 
-function fixedRoutes(diagram, state, boxes) {
-  const affected = diagram.edges.filter(({ source, target }) => boxes.has(source) || boxes.has(target));
+function fixedRoutes(diagram, state, boxes, movable) {
+  const affected = diagram.edges.filter(({ source, target }) =>
+    boxes.has(source) || boxes.has(target) || movable?.has(source) || movable?.has(target));
   const result = new Map();
   for (const [scope, edges] of Map.groupBy(affected, ({ source }) => source.scope)) {
     const flip = scope.horizontal === false;
@@ -519,6 +594,7 @@ function fixedRoutes(diagram, state, boxes) {
       top: drawing.y - pad + (frame && flip ? scope.header : 0),
       right: right(drawing) + pad, bottom: bottom(drawing) + pad };
     const pending = [];
+    const existing = new Map();
     for (const edge of edges) {
       const source = state.boxes.get(edge.source);
       const target = state.boxes.get(edge.target);
@@ -527,9 +603,14 @@ function fixedRoutes(diagram, state, boxes) {
         back: center(target, axis) < center(source, axis) };
       const translated = state.routes.get(edge);
       if (translated && translatedRouteIsClear(translated, flow, bounds, obstacles)) result.set(edge, translated);
-      else pending.push(flow);
+      else {
+        pending.push(flow);
+        if (movable && acceptsRoute(edge.points, flow, bounds, obstacles)) existing.set(edge.id, edge.points);
+      }
     }
-    const routes = routeFlows(pending, bounds, obstacles);
+    let routes = routeFlows(pending, bounds, obstacles);
+    if (movable && existing.size === pending.length &&
+        (!routes || compareCosts(routeCost(existing.values()), routeCost(routes.values())) <= 0)) routes = existing;
     if (!routes) return null;
     for (const edge of edges) {
       if (routes.has(edge.id)) result.set(edge, routes.get(edge.id));
@@ -549,7 +630,8 @@ export function planSelection({ figures, edges }, { scope, members }, gaps) {
   const flip = scope.horizontal === false;
   const local = flip ? transpose : (box) => box;
   const world = flip ? ({ x, y }) => ({ x: y, y: x }) : (delta) => delta;
-  const spacing = flip ? { x: gaps.y, y: gaps.x } : gaps;
+  const spacing = localSpacing(gaps, flip);
+  const minimums = { x: spacing.x, y: spacing.y };
   const frame = scope.box && local(scope.box);
   const origin = { x: frame?.x ?? 0, y: frame?.y ?? 0 };
   const relative = (box) => translate(box, { x: -origin.x, y: -origin.y });
@@ -584,9 +666,8 @@ export function planSelection({ figures, edges }, { scope, members }, gaps) {
   }
   let reason = 'collisions';
 
-  for (const compact of [false, true]) {
-    const deltas = layoutProcess(units, graph, spacing, { compact });
-    if (!deltas) continue;
+  function* placements(deltas) {
+    if (!deltas) return;
     const areas = units.map((unit) => ({ unit, box: translate(unit.area, {
       x: origin.x + deltas.get(unit).x, y: origin.y + deltas.get(unit).y }), limits: unit.limits }));
     const groups = Map.groupBy(areas, ({ unit }) => unit.lane);
@@ -616,13 +697,61 @@ export function planSelection({ figures, edges }, { scope, members }, gaps) {
       const boxes = new Map([...state.boxes].filter(([figure, box]) => !sameBox(figure.box, box)));
       if (!fits || [...boxes.values()].some((box) => !validBox(box)) ||
           !respectsGaps(units, state, spacing, local) || unitsOverlap(units, state.boxes)) continue;
-      const routes = fixedRoutes(diagram, state, boxes);
-      if (!routes) {
-        reason = 'routing';
-        continue;
-      }
-      return { boxes, routes };
+      yield { state, boxes };
     }
   }
-  return { reason };
+
+  let base;
+  for (const compact of [false, true]) {
+    const deltas = layoutProcess(units, graph, minimums, { compact });
+    for (const candidate of placements(deltas)) {
+      const routes = fixedRoutes(diagram, candidate.state, candidate.boxes);
+      if (routes) {
+        base = { ...candidate, routes, compact };
+        break;
+      }
+      reason = 'routing';
+    }
+    if (base) break;
+  }
+  if (!base) return { reason };
+  if (spacing.maxX === undefined && spacing.maxY === undefined) return { boxes: base.boxes, routes: base.routes };
+
+  const { layouts, excess } = spacingLayouts(units, graph, spacing, { compact: base.compact });
+  const movableParts = new Set(figures.filter((figure) => movable.has(figure.host ?? figure) ||
+    subprocesses.some((subprocess) => descendantOf(figure, subprocess))));
+  const movement = (boxes) => [...boxes].reduce((total, [{ box }, next]) =>
+    total + Math.abs(next.x - box.x) + Math.abs(next.y - box.y), 0);
+  const baseline = { ...base, excess: excess(base.state, local) };
+  if (!baseline.excess) return { boxes: base.boxes, routes: base.routes };
+  const baseRoutes = fixedRoutes(diagram, base.state, base.boxes, movableParts);
+  if (!baseRoutes) return { boxes: base.boxes, routes: base.routes };
+  baseline.cost = [...routeCost(baseRoutes.values()), movement(base.boxes)];
+  const fixedUnits = stationary.filter((figure) => figure.kind === 'node').map((figure) => ({
+    lane: figure.lane,
+    area: boundsOf([figure, ...attachments(diagram, figure)].map(({ box }) => local(box)))
+  }));
+  let best = baseline;
+  for (const deltas of layouts) {
+    for (const candidate of placements(deltas)) {
+      if (!respectsGaps(units, candidate.state, spacing, local, true) ||
+          units.some(({ lane, parts, area }) => {
+            const before = translate(area, origin);
+            const after = boundsOf(parts.map((part) => local(candidate.state.boxes.get(part))));
+            return fixedUnits.some((fixed) => lane === fixed.lane &&
+              hasClearance(before, fixed.area, spacing) && !hasClearance(after, fixed.area, spacing));
+          })) continue;
+      candidate.excess = excess(candidate.state, local);
+      if (candidate.excess >= baseline.excess) continue;
+      const routes = fixedRoutes(diagram, candidate.state, candidate.boxes, movableParts);
+      if (!routes) continue;
+      candidate.cost = [...routeCost(routes.values()), movement(candidate.boxes)];
+      if (preferSpacing(candidate, baseline, best)) {
+        best = { ...candidate, routes: new Map([...routes].filter(([{ source, target }]) =>
+          candidate.boxes.has(source) || candidate.boxes.has(target))) };
+      }
+      break;
+    }
+  }
+  return { boxes: best.boxes, routes: best.routes };
 }

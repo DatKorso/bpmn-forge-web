@@ -167,7 +167,7 @@ button, input, textarea { font: inherit; }
   top: calc(100% + var(--space-xs));
   display: grid;
   gap: var(--space-sm);
-  width: 216px;
+  width: 264px;
   padding: var(--space-md);
 }
 
