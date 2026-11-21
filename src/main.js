@@ -4,6 +4,7 @@ import 'bpmn-js/dist/assets/diagram-js.css';
 import 'bpmn-js/dist/assets/bpmn-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css';
 import autoAlign from './auto-align.js';
+import { reportAlignment, reportOperation, resetAlignment } from './footer.js';
 import russian from './russian.js';
 import './style.css';
 
@@ -22,7 +23,6 @@ const workspace = byId('workspace');
 const fileInput = byId('file');
 const gapX = byId('gap-x');
 const gapY = byId('gap-y');
-const status = byId('status');
 let modeler;
 let busy = false;
 let filename = 'Новая схема.bpmn';
@@ -39,20 +39,6 @@ function updateControls() {
   byId('empty').hidden = busy || !root || root.children.length > 0;
   workspace.inert = busy;
   workspace.setAttribute('aria-busy', String(busy));
-}
-
-function report(message, skipped = [], error = false) {
-  status.classList.toggle('error', error);
-  status.textContent = message;
-  if (!skipped.length) return;
-
-  const list = document.createElement('ul');
-  for (const { name, reason } of skipped) {
-    const item = document.createElement('li');
-    item.textContent = `${name} — ${reason}.`;
-    list.append(item);
-  }
-  status.append(list);
 }
 
 function keepFractionalBounds(modeler) {
@@ -99,11 +85,12 @@ async function loadDiagram(readXML, nextFilename, message) {
     host.classList.remove('staging');
     filename = nextFilename;
     byId('document-name').textContent = nextFilename.replace(/\.bpmn$/i, '');
-    report(warnings.length ? `${message} Предупреждения импорта: ${warnings.length}.` : message);
+    resetAlignment();
+    reportOperation(warnings.length ? `${message} Предупреждения импорта: ${warnings.length}.` : message);
   } catch (error) {
     next?.destroy();
     host.remove();
-    report('Не удалось открыть BPMN. Проверьте формат файла.', [], true);
+    reportOperation('Не удалось открыть BPMN. Проверьте формат файла.', true);
     console.error(error);
   } finally {
     busy = false;
@@ -123,11 +110,11 @@ fileInput.addEventListener('change', () => {
 
 byId('undo').addEventListener('click', () => {
   modeler.get('commandStack').undo();
-  report('Действие отменено.');
+  reportOperation('Действие отменено.');
 });
 byId('redo').addEventListener('click', () => {
   modeler.get('commandStack').redo();
-  report('Действие повторено.');
+  reportOperation('Действие повторено.');
 });
 
 byId('download').addEventListener('click', async () => {
@@ -141,9 +128,9 @@ byId('download').addEventListener('click', async () => {
     link.download = outputName;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    if (currentModeler === modeler) report('Файл BPMN скачан.');
+    if (currentModeler === modeler) reportOperation('Файл BPMN скачан.');
   } catch (error) {
-    if (currentModeler === modeler) report('Не удалось сохранить файл BPMN.', [], true);
+    if (currentModeler === modeler) reportOperation('Не удалось сохранить файл BPMN.', true);
     console.error(error);
   }
 });
@@ -164,11 +151,16 @@ alignment.addEventListener('submit', (event) => event.preventDefault());
 byId('align').addEventListener('click', () => {
   if (busy || !modeler || !alignment.reportValidity()) return;
 
-  const { moved, skipped } = modeler.get('autoAlign').run({
-    x: gapX.valueAsNumber,
-    y: gapY.valueAsNumber
-  });
-  report(`Перемещено фигур: ${moved}. Пропущено участков: ${skipped.length}.`, skipped);
+  try {
+    const { moved, skipped } = modeler.get('autoAlign').run({
+      x: gapX.valueAsNumber,
+      y: gapY.valueAsNumber
+    });
+    reportAlignment(`Перемещено фигур: ${moved}. Пропущено участков: ${skipped.length}.`, skipped);
+  } catch (error) {
+    reportAlignment('Не удалось выполнить автовыравнивание.', [], true);
+    console.error(error);
+  }
 });
 
 new ResizeObserver(() => modeler?.get('canvas').resized()).observe(workspace);

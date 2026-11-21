@@ -42,9 +42,53 @@
     </main>
 
     <footer class="footer">
-      <div id="status" role="status" aria-live="polite" aria-atomic="true"></div>
-      <span class="grid-label">Шаг привязки · 10</span>
+      <button id="show-messages" class="icon-button" type="button" aria-label="Сообщения редактора"
+          title="Сообщения редактора" aria-haspopup="dialog" aria-controls="messages">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H9l-5 4V4ZM8 8h8m-8 4h5" /></svg>
+        <span id="unread-messages" class="unread-indicator" hidden></span>
+      </button>
+      <span id="unread-description" hidden>Есть непрочитанные сообщения</span>
+      <div class="footer-release">
+        <a id="version" title="Репозиторий BPMN Forge"></a>
+        <button id="show-changelog" class="icon-button" type="button" aria-label="История изменений"
+            title="История изменений" aria-haspopup="dialog" aria-controls="changelog">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2 7M3 5v6h6m3-4v5l3 2" /></svg>
+        </button>
+      </div>
     </footer>
+
+    <div id="status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <dialog id="messages" class="footer-dialog" aria-labelledby="messages-title">
+      <header>
+        <h2 id="messages-title">Сообщения редактора</h2>
+        <form method="dialog"><button type="submit" autofocus>Закрыть</button></form>
+      </header>
+      <div class="dialog-content" tabindex="0">
+        <section aria-labelledby="alignment-title">
+          <h3 id="alignment-title">Автовыравнивание</h3>
+          <p class="grid-label">Шаг привязки · 10</p>
+          <p id="alignment-result">Автовыравнивание ещё не выполнялось.</p>
+          <ul id="alignment-skips" hidden></ul>
+        </section>
+        <section aria-labelledby="operation-title">
+          <h3 id="operation-title">Действия со схемой</h3>
+          <p id="operation-message"></p>
+        </section>
+      </div>
+    </dialog>
+
+    <dialog id="changelog" class="footer-dialog" aria-labelledby="changelog-title">
+      <header>
+        <h2 id="changelog-title">История изменений</h2>
+        <form method="dialog"><button type="submit" autofocus>Закрыть</button></form>
+      </header>
+      <div class="dialog-content" tabindex="0">
+        <p id="history-unavailable" hidden>История изменений недоступна</p>
+        <ol id="commit-list" hidden></ol>
+        <a id="full-history" hidden>Полная история этой ревизии</a>
+      </div>
+    </dialog>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

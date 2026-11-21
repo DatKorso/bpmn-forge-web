@@ -160,17 +160,112 @@ button, input { font: inherit; }
 .footer {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
-  padding: 11px 26px;
+  padding: 5px 26px;
   color: var(--muted);
   font-size: 13px;
 }
 
-#status { overflow: auto; max-height: 24vh; }
-#status ul { margin: 4px 0; padding-left: 19px; }
-#status.error { color: #9c2830; }
-.grid-label { white-space: nowrap; }
+.footer-release { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.footer-release a { color: var(--accent); }
+
+.icon-button, .footer-dialog button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: #263651;
+  cursor: pointer;
+}
+
+.icon-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 32px;
+  padding: 0;
+}
+
+.icon-button svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-button:hover, .footer-dialog button:hover { background: #ebf0fc; border-color: #bbc8e3; }
+.icon-button:focus-visible, .footer-release a:focus-visible, .footer-dialog :focus-visible {
+  outline: 2px solid #5676d9;
+  outline-offset: 2px;
+}
+
+.unread-indicator {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  background: #ad3038;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.footer-dialog {
+  width: min(560px, calc(100% - 24px));
+  max-height: min(620px, calc(100dvh - 24px));
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  box-shadow: 0 12px 32px rgb(26 49 84 / 16%);
+  font-size: 14px;
+}
+
+.footer-dialog[open] { display: flex; flex-direction: column; }
+.footer-dialog::backdrop { background: rgb(23 36 62 / 30%); }
+
+.footer-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.footer-dialog h2 { margin: 0; font-size: 17px; }
+.footer-dialog button { padding: 6px 10px; font-size: 13px; }
+
+.dialog-content { overflow: auto; padding: 14px 16px; overflow-wrap: anywhere; }
+.dialog-content:focus-visible { outline-offset: -2px; }
+.dialog-content section + section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.dialog-content h3 { margin: 0; font-size: 14px; }
+.dialog-content p { margin: 6px 0 0; }
+.dialog-content ul { margin: 6px 0 0; padding-left: 20px; }
+.dialog-content .error { color: #9c2830; }
+.grid-label { color: var(--muted); font-size: 13px; }
+
+#commit-list { margin: 0 0 14px; padding: 0; list-style: none; }
+#commit-list li { display: grid; gap: 3px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+#commit-list li:first-child { padding-top: 0; }
+#commit-list time { color: var(--muted); font-size: 12px; }
+.dialog-content a { color: var(--accent); }
 
 @media (max-width: 1120px) {
   .alignment { margin-left: 0; }
