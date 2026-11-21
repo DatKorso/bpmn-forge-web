@@ -85,8 +85,19 @@ function cutsInterior(a, b, rect) {
     return a.y > rect.y && a.y < bottom(rect) &&
       Math.min(a.x, b.x) < right(rect) && Math.max(a.x, b.x) > rect.x;
   }
-  return a.x > rect.x && a.x < right(rect) &&
-    Math.min(a.y, b.y) < bottom(rect) && Math.max(a.y, b.y) > rect.y;
+  if (a.x === b.x) {
+    return a.x > rect.x && a.x < right(rect) &&
+      Math.min(a.y, b.y) < bottom(rect) && Math.max(a.y, b.y) > rect.y;
+  }
+  const x = [(rect.x - a.x) / (b.x - a.x), (right(rect) - a.x) / (b.x - a.x)];
+  const y = [(rect.y - a.y) / (b.y - a.y), (bottom(rect) - a.y) / (b.y - a.y)];
+  return Math.max(0, Math.min(...x), Math.min(...y)) < Math.min(1, Math.max(...x), Math.max(...y));
+}
+
+export function translatedRouteIsClear(points, { source, target }, bounds, obstacles) {
+  const others = obstacles.filter((rect) => rect !== source && rect !== target);
+  return points.length >= 2 && points.every((point) => inside(point, bounds)) &&
+    segments(points).every(([a, b]) => !others.some((rect) => cutsInterior(a, b, rect)));
 }
 
 function getPorts(rect, bounds, obstacles) {

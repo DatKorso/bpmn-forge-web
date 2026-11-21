@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { planAlignment } from '../src/alignment-plan.js';
+import { alignmentSelection, planAlignment, planSelection } from '../src/alignment-plan.js';
 import { boundsOf, center, intersects, layoutProcess, translate } from '../src/layout.js';
 import { compareCosts, ROUTE_MARGIN, routeCost, routeFlows } from '../src/route-flows.js';
 
@@ -15,7 +15,7 @@ function diagram() {
 
   function add(id, bounds, options = {}) {
     const scope = options.scope ?? root;
-    const figure = { id, kind: 'node', type: 'bpmn:Task', box: bounds, scope, parent: scope, header: 0, ...options };
+    const figure = { id, element: { id }, kind: 'node', type: 'bpmn:Task', box: bounds, scope, parent: scope, header: 0, ...options };
     figures.push(figure);
     return figure;
   }
@@ -330,4 +330,75 @@ test('keeps an impossible scope unchanged and reports the skipped area', () => {
   assert.deepEqual(plan.skipped, [{ scope: d.root, reason: 'bounds' }]);
   assert.equal(plan.boxes.size, 0);
   assert.equal(plan.routes.size, 0);
+});
+
+for (const horizontal of [true, false]) {
+  test(`aligns selected shapes across ${horizontal ? 'horizontal' : 'vertical'} lanes and only routes incident flows`, () => {
+    const d = diagram();
+    const orient = (x, y, w, h) => horizontal ? box(x, y, w, h) : box(y, x, h, w);
+    const pool = d.add('pool', orient(0, 0, 640, 320), { kind: 'pool', horizontal, header: 30 });
+    const top = d.add('top', orient(30, 0, 610, 160), { kind: 'lane', scope: pool, header: 30 });
+    const bottom = d.add('bottom', orient(30, 160, 610, 160), { kind: 'lane', scope: pool, header: 30 });
+    const a = d.add('a', orient(86, 47, 80, 50), { scope: pool, lane: top });
+    const b = d.add('b', orient(255, 183, 80, 50), { scope: pool, lane: bottom });
+    const fixed = d.add('fixed', orient(420, 55, 80, 50), { scope: pool, lane: top });
+    const neighbor = d.add('neighbor', orient(520, 175, 80, 50), { scope: pool, lane: bottom });
+    const internal = d.connect(a, b);
+    const incident = d.connect(b, fixed);
+    const untouched = d.connect(fixed, neighbor);
+    untouched.points = [point(500, 80), point(560, 195)];
+
+    const selected = alignmentSelection(d, [a.element, { labelTarget: b.element }]);
+    assert.deepEqual(selected, { scope: pool, members: [a, b] });
+    assert.ok(alignmentSelection(d, [pool.element, a.element]).reason);
+    assert.deepEqual(alignmentSelection(d, [top.element]).members, [a, fixed]);
+    const plan = planSelection(d, selected, gaps);
+    assert.deepEqual([...plan.boxes.keys()], [a, b]);
+    assert.deepEqual(new Set(plan.routes.keys()), new Set([internal, incident]));
+    apply(plan);
+    const repeated = planSelection(d, selected, gaps);
+    assert.equal(repeated.boxes.size, 0);
+    assert.equal(repeated.routes.size, 0);
+  });
+}
+
+test('moves a nested subprocess without flattening its internal geometry', () => {
+  const d = diagram();
+  const pool = d.add('pool', box(0, 0, 700, 420), { kind: 'pool', horizontal: true, header: 30 });
+  const a = d.add('a', box(86, 130, 80, 50), { scope: pool });
+  const sub = d.add('sub', box(282, 105, 260, 180), { scope: pool, expanded: true });
+  const start = d.add('start', box(307, 141, 36, 36), { scope: sub, type: 'bpmn:StartEvent' });
+  const task = d.add('task', box(412, 177, 80, 60), { scope: sub });
+  d.connect(a, sub);
+  const inside = d.connect(start, task);
+  inside.points = [point(343, 159), point(412, 207)];
+
+  assert.ok(alignmentSelection(d, [a.element, task.element]).reason);
+  const plan = planSelection(d, alignmentSelection(d, [pool.element]), gaps);
+  const moved = plan.boxes.get(sub);
+  const delta = { x: moved.x - sub.box.x, y: moved.y - sub.box.y };
+  assert.deepEqual(plan.boxes.get(start), translate(start.box, delta));
+  assert.deepEqual(plan.boxes.get(task), translate(task.box, delta));
+  assert.deepEqual(plan.routes.get(inside), inside.points.map(({ x, y }) => point(x + delta.x, y + delta.y)));
+  assert.equal(plan.boxes.has(pool), false);
+});
+
+test('declines a fixed selection atomically if spacing or routing cannot fit', () => {
+  const d = diagram();
+  const pool = d.add('pool', box(0, 0, 500, 300), { kind: 'pool', horizontal: true, header: 30 });
+  const top = d.add('top', box(30, 0, 470, 150), { kind: 'lane', scope: pool, header: 30 });
+  const bottom = d.add('bottom', box(30, 150, 470, 150), { kind: 'lane', scope: pool, header: 30 });
+  const a = d.add('a', box(86, 47, 80, 50), { scope: pool, lane: top });
+  const b = d.add('b', box(195, 42, 80, 50), { scope: pool, lane: top });
+  const target = d.add('target', box(360, 180, 80, 50), { scope: pool, lane: bottom });
+  d.add('wall', box(20, 140, 500, 20), { scope: pool, kind: 'artifact', type: 'bpmn:TextAnnotation' });
+  const flow = d.connect(b, target);
+  flow.points = [point(275, 67), point(360, 205)];
+  const before = d.figures.map((figure) => ({ ...figure.box }));
+  const selected = alignmentSelection(d, [top.element]);
+
+  assert.deepEqual(planSelection(d, selected, { x: 800, y: 300 }), { reason: 'collisions' });
+  assert.deepEqual(planSelection(d, selected, gaps), { reason: 'routing' });
+  assert.deepEqual(d.figures.map((figure) => figure.box), before);
+  assert.deepEqual(flow.points, [point(275, 67), point(360, 205)]);
 });

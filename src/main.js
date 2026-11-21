@@ -7,6 +7,7 @@ import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css';
 import 'bpmn-js-color-picker/colors/color-picker.css';
 import autoAlign from './auto-align.js';
 import { reportAlignment, reportOperation, resetAlignment } from './footer.js';
+import { protectConditionalFlows, renderProperties } from './properties.js';
 import russian from './russian.js';
 import './style.css';
 
@@ -25,17 +26,27 @@ const workspace = byId('workspace');
 const fileInput = byId('file');
 const gapX = byId('gap-x');
 const gapY = byId('gap-y');
+const alignSelection = byId('align-selection');
+const selectionReason = byId('selection-reason');
+const propertiesFields = byId('properties-fields');
 let modeler;
 let busy = false;
 let filename = 'Новая схема.bpmn';
 
 function updateControls() {
   const stack = modeler?.get('commandStack');
+  const selection = modeler?.get('selection').get() ?? [];
 
   for (const id of ['new', 'open']) byId(id).disabled = busy;
   for (const id of ['download', 'align']) byId(id).disabled = busy || !modeler;
   byId('undo').disabled = busy || !stack?.canUndo();
   byId('redo').disabled = busy || !stack?.canRedo();
+  const reason = busy || !modeler ? 'Дождитесь загрузки схемы.' : modeler.get('autoAlign').selection(selection).reason;
+  alignSelection.setAttribute('aria-disabled', String(Boolean(reason)));
+  selectionReason.textContent = reason ?? '';
+  selectionReason.hidden = !reason;
+  renderProperties(modeler, selection);
+  propertiesFields.inert = busy;
 
   const root = modeler?.get('canvas').getRootElement();
   byId('empty').hidden = busy || !root || root.children.length > 0;
@@ -73,11 +84,14 @@ async function loadDiagram(readXML, nextFilename, message) {
   try {
     // Keep the live model and its history until the new XML has rendered successfully.
     next = new Modeler({ container: host, additionalModules: [autoAlign, russian, colorPicker] });
+    protectConditionalFlows(next);
     keepFractionalBounds(next);
     const { warnings } = await next.importXML(await readXML());
     const canvas = next.get('canvas');
     if (canvas.getRootElement().children.length) canvas.zoom('fit-viewport');
-    next.on(['commandStack.changed', 'root.set'], updateControls);
+    next.on(['commandStack.changed', 'root.set', 'selection.changed'], () => {
+      if (modeler === next) updateControls();
+    });
 
     const oldHost = workspace.querySelector('.diagram:not(.staging)');
     modeler?.destroy();
@@ -150,14 +164,12 @@ for (const input of [gapX, gapY]) {
 
 const alignment = byId('alignment');
 alignment.addEventListener('submit', (event) => event.preventDefault());
+const alignmentGaps = () => ({ x: gapX.valueAsNumber, y: gapY.valueAsNumber });
 byId('align').addEventListener('click', () => {
   if (busy || !modeler || !alignment.reportValidity()) return;
 
   try {
-    const { moved, resized, rerouted, skipped } = modeler.get('autoAlign').run({
-      x: gapX.valueAsNumber,
-      y: gapY.valueAsNumber
-    });
+    const { moved, resized, rerouted, skipped } = modeler.get('autoAlign').run(alignmentGaps());
     reportAlignment(
       `Перемещено фигур: ${moved}. Расширено контейнеров: ${resized}. Обновлено связей: ${rerouted}. ` +
       `Пропущено участков: ${skipped.length}.`,
@@ -165,6 +177,19 @@ byId('align').addEventListener('click', () => {
     );
   } catch (error) {
     reportAlignment('Не удалось выполнить автовыравнивание.', [], true);
+    console.error(error);
+  }
+});
+
+alignSelection.addEventListener('click', () => {
+  if (alignSelection.getAttribute('aria-disabled') === 'true' || !alignment.reportValidity()) return;
+  try {
+    const selection = modeler.get('selection').get();
+    const { moved, rerouted, reason } = modeler.get('autoAlign').runSelection(selection, alignmentGaps());
+    if (reason) reportAlignment(`Не удалось выровнять выделение: ${reason}.`, [], true);
+    else reportAlignment(`Выделение: перемещено фигур — ${moved}, обновлено связей — ${rerouted}.`);
+  } catch (error) {
+    reportAlignment('Не удалось выровнять выделение.', [], true);
     console.error(error);
   }
 });

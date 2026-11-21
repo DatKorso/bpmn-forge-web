@@ -1,9 +1,9 @@
-import { is } from 'bpmn-js/lib/util/ModelUtil';
+import { getDi, is } from 'bpmn-js/lib/util/ModelUtil';
 import { isExpanded, isHorizontal } from 'bpmn-js/lib/util/DiUtil';
 import { collectLanes, getLanesRoot, LANE_INDENTATION } from 'bpmn-js/lib/features/modeling/util/LaneUtil';
 import { isDirectionHorizontal } from 'bpmn-js/lib/features/modeling/util/ModelingUtil';
-import { planAlignment } from './alignment-plan.js';
-import { translate } from './layout.js';
+import { alignmentSelection, planAlignment, planSelection } from './alignment-plan.js';
+import { translate, translateWaypoints } from './layout.js';
 
 const COMMAND = 'editor.autoAlign';
 const SKIP_REASONS = {
@@ -25,6 +25,7 @@ function regionName({ element, kind }) {
 function figureKind(shape) {
   if (is(shape, 'bpmn:Participant')) return 'pool';
   if (is(shape, 'bpmn:Lane')) return 'lane';
+  if (is(shape, 'bpmn:Group')) return 'group';
   if (is(shape, 'bpmn:FlowNode') && !is(shape, 'bpmn:BoundaryEvent')) return 'node';
   return 'artifact';
 }
@@ -50,6 +51,9 @@ function snapshot(root, shapes, elementRegistry) {
     figure.host = byElement.get(element.host);
     figure.header = ['pool', 'lane'].includes(figure.kind) ? LANE_INDENTATION : 0;
     figure.horizontal = orientation(figure.kind === 'pool' ? element : scope);
+    if (figure.kind === 'lane' && isHorizontal(scope) == null && isHorizontal(element) != null) {
+      figure.scope.horizontal = isHorizontal(element);
+    }
 
     if (figure.kind === 'node') {
       if (!laneCache.has(scope)) laneCache.set(scope, collectLanes(scope));
@@ -78,11 +82,12 @@ function sameWaypoints(a, b) {
 }
 
 class AlignCommand {
-  static $inject = ['modeling', 'bpmnUpdater'];
+  static $inject = ['modeling', 'bpmnUpdater', 'eventBus'];
 
-  constructor(modeling, bpmnUpdater) {
+  constructor(modeling, bpmnUpdater, eventBus) {
     this.modeling = modeling;
     this.bpmnUpdater = bpmnUpdater;
+    this.eventBus = eventBus;
   }
 
   // Apply final geometry together so intermediate lane boundaries never rewrite flowNodeRef.
@@ -95,13 +100,30 @@ class AlignCommand {
   }
 
   execute(context) {
-    const { bounds } = context;
+    const { bounds, routes, relayout } = context;
     context.previous = new Map([...bounds.keys()].map((element) => [element, getBounds(element)]));
+    const labelOwners = new Set([
+      ...[...bounds.keys()].map((element) => element.labelTarget).filter(Boolean),
+      ...routes.keys(), ...relayout
+    ]);
+    context.previousLabels = [...labelOwners].map((element) => {
+      const di = getDi(element);
+      return { di, label: di.label, bounds: di.label?.bounds, box: di.label?.bounds && getBounds(di.label.bounds) };
+    });
     return this.setBounds(bounds);
   }
 
-  revert({ previous }) {
-    return this.setBounds(previous);
+  revert({ previous, previousLabels }) {
+    const changed = this.setBounds(previous);
+    // Rendering the reverted labels can synthesize DI bounds that were absent in the input.
+    this.eventBus.once('elements.changed', 500, () => {
+      for (const { di, label, bounds, box } of previousLabels) {
+        di.set('label', label);
+        if (label) label.set('bounds', bounds);
+        if (box) Object.assign(bounds, box);
+      }
+    });
+    return changed;
   }
 
   // Nested commands belong in postExecute so the command stack groups their undo and redo.
@@ -120,13 +142,82 @@ class AlignCommand {
 }
 
 class AutoAlign {
-  static $inject = ['canvas', 'elementRegistry', 'commandStack'];
+  static $inject = ['canvas', 'elementRegistry', 'commandStack', 'layouter', 'connectionDocking'];
 
-  constructor(canvas, elementRegistry, commandStack) {
+  constructor(canvas, elementRegistry, commandStack, layouter, connectionDocking) {
     this.canvas = canvas;
     this.elementRegistry = elementRegistry;
     this.commandStack = commandStack;
+    this.layouter = layouter;
+    this.connectionDocking = connectionDocking;
     commandStack.registerHandler(COMMAND, AlignCommand);
+  }
+
+  shapesByRoot(onlyRoot, includeGroups = false) {
+    const shapesByRoot = new Map();
+
+    for (const shape of this.elementRegistry.getAll()) {
+      if (!shape.parent || shape.hidden || shape.waypoints || shape.labelTarget ||
+          !includeGroups && is(shape, 'bpmn:Group')) continue;
+      const root = this.canvas.findRoot(shape);
+      if (onlyRoot && root !== onlyRoot) continue;
+      if (!shapesByRoot.has(root)) shapesByRoot.set(root, []);
+      shapesByRoot.get(root).push(shape);
+    }
+    return shapesByRoot;
+  }
+
+  selection(elements) {
+    const root = this.canvas.getRootElement();
+    const shapes = elements.length ? this.shapesByRoot(root, true).get(root) ?? [] : [];
+    const diagram = snapshot(root, shapes, this.elementRegistry);
+    return { diagram, ...alignmentSelection(diagram, elements) };
+  }
+
+  runSelection(elements, gaps) {
+    const selection = this.selection(elements);
+    if (selection.reason) return selection;
+    const plan = planSelection(selection.diagram, selection, gaps);
+    if (plan.reason) return { reason: SKIP_REASONS[plan.reason] };
+
+    const bounds = new Map();
+    const routes = new Map();
+    const connections = new Set();
+    for (const [{ element, box }, next] of plan.boxes) {
+      bounds.set(element, next);
+      const delta = { x: next.x - box.x, y: next.y - box.y };
+      for (const label of element.labels) bounds.set(label, translate(label, delta));
+      for (const connection of [...element.incoming, ...element.outgoing]) {
+        if (!connection.hidden && !is(connection, 'bpmn:SequenceFlow')) connections.add(connection);
+      }
+    }
+
+    for (const [{ connection }, points] of plan.routes) {
+      if (!sameWaypoints(connection.waypoints, points)) routes.set(connection, points);
+    }
+    const projected = (element) => bounds.has(element) ? {
+      ...element, ...bounds.get(element), businessObject: element.businessObject, di: element.di,
+      parent: element.parent, host: element.host && projected(element.host)
+    } : element;
+    for (const connection of connections) {
+      const { source, target, waypoints } = connection;
+      const nextSource = projected(source);
+      const nextTarget = projected(target);
+      const delta = { x: nextSource.x - source.x, y: nextSource.y - source.y };
+      const rigid = delta.x === nextTarget.x - target.x && delta.y === nextTarget.y - target.y;
+      const points = rigid ? translateWaypoints(waypoints, delta) : this.connectionDocking.getCroppedWaypoints({
+        ...connection,
+        businessObject: connection.businessObject,
+        source: nextSource,
+        target: nextTarget,
+        waypoints: this.layouter.layoutConnection(connection, { source: nextSource, target: nextTarget, waypoints: [] })
+      });
+      if (!points.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))) return { reason: SKIP_REASONS.routing };
+      if (!sameWaypoints(waypoints, points)) routes.set(connection, points);
+    }
+
+    if (bounds.size || routes.size) this.commandStack.execute(COMMAND, { bounds, routes, relayout: [] });
+    return { moved: plan.boxes.size, rerouted: routes.size };
   }
 
   run(gaps) {
@@ -134,18 +225,10 @@ class AutoAlign {
     const routes = new Map();
     const relayout = new Set();
     const skipped = [];
-    const shapesByRoot = new Map();
     let moved = 0;
     let resized = 0;
 
-    for (const shape of this.elementRegistry.getAll()) {
-      if (!shape.parent || shape.hidden || shape.waypoints || shape.labelTarget || is(shape, 'bpmn:Group')) continue;
-      const root = this.canvas.findRoot(shape);
-      if (!shapesByRoot.has(root)) shapesByRoot.set(root, []);
-      shapesByRoot.get(root).push(shape);
-    }
-
-    for (const [root, shapes] of shapesByRoot) {
+    for (const [root, shapes] of this.shapesByRoot()) {
       const diagram = snapshot(root, shapes, this.elementRegistry);
       const plan = planAlignment(diagram, gaps);
       for (const [{ element, box }, next] of plan.boxes) {

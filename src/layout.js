@@ -21,6 +21,11 @@ export function translate(rect, delta) {
   return { x: rect.x + delta.x, y: rect.y + delta.y, width: rect.width, height: rect.height };
 }
 
+export function translateWaypoints(points, delta) {
+  const shift = (point) => ({ x: point.x + delta.x, y: point.y + delta.y });
+  return points.map((point) => point.original ? { ...shift(point), original: shift(point.original) } : shift(point));
+}
+
 export function boundsOf(rects) {
   const x = Math.min(...rects.map((rect) => rect.x));
   const y = Math.min(...rects.map((rect) => rect.y));
