@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f6fa">
+    <title>BPMN-редактор</title>
+  </head>
+  <body>
+    <header class="header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <h1>BPMN-редактор</h1>
+      </div>
+      <span id="document-name" class="document-name" title="Текущая схема">Новая схема</span>
+    </header>
+
+    <section class="toolbar" aria-label="Действия со схемой">
+      <div class="tools files">
+        <button id="new" type="button" disabled>Новая схема</button>
+        <button id="open" type="button" disabled>Открыть BPMN</button>
+        <button id="download" type="button" disabled>Скачать BPMN</button>
+        <input id="file" type="file" accept=".bpmn,.xml,application/xml,text/xml" hidden>
+      </div>
+      <div class="tools history">
+        <button id="undo" type="button" disabled><span class="history-icon" aria-hidden="true">↶</span> Отменить</button>
+        <button id="redo" type="button" disabled><span class="history-icon" aria-hidden="true">↷</span> Повторить</button>
+      </div>
+      <form id="alignment" class="tools alignment" aria-label="Минимальные отступы между краями фигур">
+        <span class="gap-label">Мин. отступы</span>
+        <label>По горизонтали <input id="gap-x" type="number" min="0" max="9007199254740991" step="1" value="80" required></label>
+        <label>По вертикали <input id="gap-y" type="number" min="0" max="9007199254740991" step="1" value="60" required></label>
+        <button id="align" class="primary" type="button" disabled>Автовыровнять</button>
+      </form>
+    </section>
+
+    <main id="workspace" aria-label="Полотно схемы" aria-busy="true">
+      <div id="empty" class="empty" hidden>
+        <strong>Схема пуста</strong>
+        <span>Выберите элемент на панели слева или откройте файл BPMN.</span>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div id="status" role="status" aria-live="polite" aria-atomic="true"></div>
+      <span class="grid-label">Шаг привязки · 10</span>
+    </footer>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
