@@ -117,6 +117,42 @@ test('aligns a vertical process across lanes and keeps its original lane assignm
   assert.equal(planAlignment(d, gaps).boxes.size, 0);
 });
 
+for (const horizontal of [true, false]) {
+  test(`keeps 20 units around figures in a ${horizontal ? 'horizontal' : 'vertical'} pool`, () => {
+    const d = diagram();
+    const orient = ({ x, y, width, height }) => horizontal ? box(x, y, width, height) : box(y, x, height, width);
+    const pool = d.add('Pool', orient(box(50, 40, 170, 100)), { kind: 'pool', horizontal, header: 30 });
+    const task = d.add('Task', orient(box(80, 40)), { scope: pool });
+    const plan = planAlignment(d, gaps);
+
+    assert.deepEqual(plan.skipped, []);
+    assert.equal(plan.boxes.has(pool), false);
+    assert.deepEqual(finalBox(plan, task), orient(box(100, 60)));
+    apply(plan);
+    assert.equal(planAlignment(d, gaps).boxes.size, 0);
+  });
+}
+
+test('grows a tight pool and lane to keep padding around a task and its boundary event', () => {
+  const d = diagram();
+  const pool = d.add('Pool', box(0, 0, 145, 85), { kind: 'pool', horizontal: true, header: 30 });
+  const lane = d.add('Lane', box(30, 0, 115, 85), { kind: 'lane', scope: pool, header: 30 });
+  const task = d.add('Task', box(60, 12, 70, 50), { scope: pool, lane });
+  const event = d.add('Boundary', box(112, 44, 36, 36), { kind: 'artifact', scope: pool, host: task });
+  const plan = planAlignment(d, gaps);
+
+  assert.deepEqual(plan.skipped, []);
+  const frame = finalBox(plan, pool);
+  const area = boundsOf([finalBox(plan, task), finalBox(plan, event)]);
+  assert.ok(area.x >= 50 && area.y >= 20);
+  assert.ok(frame.width - (area.x + area.width) >= 20);
+  assert.ok(frame.height - (area.y + area.height) >= 20);
+  assert.equal(finalBox(plan, lane).height, frame.height);
+  assert.ok(frame.width > pool.box.width && frame.height > pool.box.height);
+  apply(plan);
+  assert.equal(planAlignment(d, gaps).boxes.size, 0);
+});
+
 test('grows a nested subprocess and a lane, shifting a neighboring pool with its contents', () => {
   const d = diagram();
   const pool = d.add('A_Pool', box(0, 0, 320, 200), { kind: 'pool', horizontal: true, header: 30 });

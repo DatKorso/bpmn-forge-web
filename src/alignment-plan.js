@@ -1,6 +1,8 @@
 import { adjacentBranches, boundsOf, ceilGrid, center, forwardFlows, intersects, layoutProcess, translate } from './layout.js';
 import { acceptsRoute, compareCosts, ROUTE_MARGIN, routeCost, routeFlows } from './route-flows.js';
 
+const POOL_INSET = 20;
+
 const byId = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 const right = (rect) => rect.x + rect.width;
 const bottom = (rect) => rect.y + rect.height;
@@ -121,24 +123,26 @@ function fitLanes(state, diagram, scope, members, lanes, original, frame, toLoca
   const byLane = Map.groupBy(boxes, ([, lane]) => lane);
   const children = Map.groupBy(lanes, (lane) => lane.parent);
   const unitArea = (figure) => boundsOf([figure, ...attachments(diagram, figure)].map(bounds));
-  const scopeLeft = frame ? frame.x + scope.header : -Infinity;
-  const leftEdge = (lane) => lane ? bounds(lane).x + lane.header : scopeLeft;
+  const inset = scope.kind === 'pool' ? POOL_INSET : 0;
+  const scopeLeft = frame ? frame.x + scope.header + inset : -Infinity;
+  const scopeRight = frame ? right(frame) - Math.max(ROUTE_MARGIN, inset) : Infinity;
+  const scopeTop = frame ? frame.y + inset : -Infinity;
+  const scopeBottom = frame ? bottom(frame) - Math.max(ROUTE_MARGIN, inset) : Infinity;
+  const leftEdge = (lane) => lane ? Math.max(scopeLeft, bounds(lane).x + lane.header) : scopeLeft;
+  const rightEdge = (lane) => lane ? Math.min(scopeRight, right(bounds(lane)) - ROUTE_MARGIN) : scopeRight;
   let xGrowth = 0;
 
   // Fit lanes to a common longitudinal envelope so cross-lane columns stay aligned.
   const nodes = boxes.filter(([figure]) => figure.kind === 'node');
   const minOffset = nodes.reduce((offset, [figure, lane]) =>
     Math.max(offset, ceilGrid(leftEdge(lane) - unitArea(figure).x)), -Infinity);
-  const maxOffset = nodes.reduce((offset, [figure, lane]) => {
-    const edge = lane ? right(bounds(lane)) : frame ? right(frame) : Infinity;
-    return Math.min(offset, -ceilGrid(right(unitArea(figure)) + ROUTE_MARGIN - edge));
-  }, Infinity);
+  const maxOffset = nodes.reduce((offset, [figure, lane]) =>
+    Math.min(offset, -ceilGrid(right(unitArea(figure)) - rightEdge(lane))), Infinity);
   const dx = Math.max(minOffset, Math.min(0, maxOffset));
 
   for (const [figure, lane] of nodes) {
     if (dx) moveTree(state, diagram, figure, toWorld({ x: dx, y: 0 }));
-    const edge = lane ? right(bounds(lane)) : frame ? right(frame) : Infinity;
-    xGrowth = Math.max(xGrowth, ceilGrid(right(unitArea(figure)) + ROUTE_MARGIN - edge));
+    xGrowth = Math.max(xGrowth, ceilGrid(right(unitArea(figure)) - rightEdge(lane)));
   }
 
   function fitRows(parent, shift) {
@@ -149,10 +153,15 @@ function fitLanes(state, diagram, scope, members, lanes, original, frame, toLoca
       const offset = shift + growth;
       const occupants = byLane.get(lane) ?? [];
       const content = occupants.filter(([figure]) => figure.kind === 'node').map(([figure]) => unitArea(figure));
-      const top = content.length ? Math.min(...content.map(({ y }) => y)) : rect.y;
-      const end = content.length ? Math.max(...content.map(bottom)) + ROUTE_MARGIN : bottom(rect);
-      const dy = Math.max(ceilGrid(rect.y - top), Math.min(0, -ceilGrid(end - bottom(rect))));
-      const extra = Math.max(fitRows(lane, offset), ceilGrid(end + dy - bottom(rect)), 0);
+      let dy = 0;
+      let extra = fitRows(lane, offset);
+      if (content.length) {
+        const area = boundsOf(content);
+        const top = Math.max(rect.y, scopeTop - offset);
+        const end = Math.min(bottom(rect) - ROUTE_MARGIN, scopeBottom);
+        dy = Math.max(ceilGrid(top - area.y), Math.min(0, -ceilGrid(bottom(area) - end)));
+        extra = Math.max(extra, ceilGrid(bottom(area) + dy - end));
+      }
 
       for (const [figure] of occupants) {
         const amount = offset + (figure.kind === 'node' ? dy : 0);
@@ -168,11 +177,11 @@ function fitLanes(state, diagram, scope, members, lanes, original, frame, toLoca
   const free = (byLane.get(null) ?? []).filter(([figure]) => figure.kind === 'node');
   if (frame && free.length) {
     const area = boundsOf(free.map(([figure]) => unitArea(figure)));
-    const dy = Math.max(ceilGrid(frame.y - area.y), Math.min(0, -ceilGrid(bottom(area) + ROUTE_MARGIN - bottom(frame))));
+    const dy = Math.max(ceilGrid(scopeTop - area.y), Math.min(0, -ceilGrid(bottom(area) - scopeBottom)));
     for (const [figure] of free) {
       if (dy) moveTree(state, diagram, figure, toWorld({ x: 0, y: dy }));
     }
-    yGrowth = Math.max(yGrowth, ceilGrid(bottom(area) + dy + ROUTE_MARGIN - bottom(frame)));
+    yGrowth = Math.max(yGrowth, ceilGrid(bottom(area) + dy - scopeBottom));
   }
   return { xGrowth, yGrowth };
 }
