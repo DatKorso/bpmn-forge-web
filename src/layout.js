@@ -441,6 +441,48 @@ function placeColumns(rows, branches, branchUnits, columns, flows, minimum, comp
   return x;
 }
 
+function reuseBranchRows(rows, branches, x, gap) {
+  if (!branches.length) return rows;
+
+  const packed = [...rows];
+  const rowByUnit = new Map(rows.flatMap((row) => row.units.map((unit) => [unit, row])));
+  const branchesByFirst = new Map(branches.map((branch) => [branch.units[0], branch]));
+  for (const row of rows) {
+    if (!row.branch) continue;
+    const index = packed.indexOf(row);
+    if (index < 0) continue;
+
+    const { split, merge, units } = branchesByFirst.get(row.units[0]);
+    const splitRow = packed.indexOf(rowByUnit.get(split));
+    const mergeRow = packed.indexOf(rowByUnit.get(merge));
+    const lane = units[0].lane;
+    if ([split, ...units, merge].some((unit) => unit.lane !== lane)) continue;
+
+    // Keep the bypass on the same side of both endpoints. Include the
+    // endpoints in its horizontal span to make room for the connecting lines.
+    const span = boundsOf([split, ...units, merge].map((unit) =>
+      translate(unit.area, { x: x.get(unit) - center(unit.shape, 'x'), y: 0 })));
+    const neighbors = [index - 1, index + 1].filter((neighbor) => {
+      if (!packed[neighbor] || [splitRow, mergeRow].some((end) =>
+        (index < end) !== (neighbor < end) || neighbor === end)) return false;
+      return packed[neighbor].units.every((unit) => {
+        const left = unit.area.x + x.get(unit) - center(unit.shape, 'x');
+        return unit.lane === lane && (left - right(span) >= gap || span.x - left - unit.area.width >= gap);
+      });
+    });
+    if (!neighbors.length) continue;
+
+    const [neighbor] = neighbors.sort((a, b) =>
+      Math.abs(packed[a].anchor - row.anchor) - Math.abs(packed[b].anchor - row.anchor));
+    const shared = packed[neighbor];
+    const combined = { ...shared, units: [...shared.units, ...row.units], branch: false };
+    packed[neighbor] = combined;
+    packed.splice(index, 1);
+    for (const unit of combined.units) rowByUnit.set(unit, combined);
+  }
+  return packed;
+}
+
 function fitAxis(start, end, min, max) {
   const low = ceilGrid(min - start);
   const high = floorGrid(max - end);
@@ -449,7 +491,7 @@ function fitAxis(start, end, min, max) {
 
 export function layoutRegion(units, limits, gaps, flows = [], options = {}) {
   if (!units.length) return new Map();
-  const { compact, joinAcrossLanes } = options;
+  const { compact, joinAcrossLanes, sharedColumns } = options;
   const forward = forwardFlows(units, flows);
   const columns = verticalColumns(units, forward, joinAcrossLanes);
   const { rows, branches, branchUnits } = clusterRows(units, forward, findBranchCandidates(forward), columns);
@@ -457,7 +499,8 @@ export function layoutRegion(units, limits, gaps, flows = [], options = {}) {
   const x = forward.length
     ? placeColumns(rows, branches, branchUnits, columns, forward, gaps.x, compact)
     : placeAxis(clusterColumns(units, rowIndex), 'x', gaps.x, rowIndex, compact);
-  const y = placeAxis(rows, 'y', gaps.y, x, compact);
+  const packed = options.reuseBranchRows ? reuseBranchRows(rows, branches, sharedColumns ?? x, gaps.x) : rows;
+  const y = placeAxis(packed, 'y', gaps.y, x, compact);
   const deltas = new Map(units.map((unit) => [unit, {
     x: x.get(unit) - center(unit.shape, 'x'),
     y: y.get(unit) - center(unit.shape, 'y')
@@ -485,8 +528,8 @@ export function layoutRegion(units, limits, gaps, flows = [], options = {}) {
 
 const unbounded = { left: -Infinity, right: Infinity, top: -Infinity, bottom: Infinity };
 
-export function layoutProcess(units, flows, gaps, compact = false) {
-  const horizontal = layoutRegion(units, unbounded, gaps, flows, { compact, joinAcrossLanes: true });
+export function layoutProcess(units, flows, gaps, options = {}) {
+  const horizontal = layoutRegion(units, unbounded, gaps, flows, { ...options, joinAcrossLanes: true });
   if (!horizontal) return null;
 
   const byLane = Map.groupBy(units, (unit) => unit.lane);
@@ -494,9 +537,12 @@ export function layoutProcess(units, flows, gaps, compact = false) {
 
   // Columns come from the whole graph. A lane has its own row ordering and spacing.
   const deltas = new Map();
+  const sharedColumns = options.reuseBranchRows
+    ? new Map(units.map((unit) => [unit, center(unit.shape, 'x') + horizontal.get(unit).x]))
+    : undefined;
   for (const [lane, members] of byLane) {
     const local = flows.filter(({ source, target }) => source.lane === lane && target.lane === lane);
-    const rows = layoutRegion(members, unbounded, gaps, local, { compact });
+    const rows = layoutRegion(members, unbounded, gaps, local, { ...options, sharedColumns });
     if (!rows) return null;
     for (const unit of members) deltas.set(unit, { x: horizontal.get(unit).x, y: rows.get(unit).y });
   }

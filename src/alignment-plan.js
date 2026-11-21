@@ -319,7 +319,7 @@ function planScope(diagram, state, scope, gaps) {
   const base = prepare(regular);
   let best = base && !base.growth ? evaluate(base) : null;
   if (!best) {
-    const compact = layoutProcess(units, graph, spacing, true);
+    const compact = layoutProcess(units, graph, spacing, { compact: true });
     const compressed = prepare(compact);
     const preferCompact = compressed && (!base || compressed.growth < base.growth);
     best = !base || base.growth
@@ -327,6 +327,7 @@ function planScope(diagram, state, scope, gaps) {
       : evaluate(compressed);
     if (!best) return { reason: base || compressed ? 'routing' : regular || compact ? 'collisions' : 'bounds' };
   }
+  const compact = best.deltas !== regular;
 
   const incoming = Map.groupBy([...forward], (flow) => flow.target);
   const outgoing = Map.groupBy([...forward], (flow) => flow.source);
@@ -370,6 +371,19 @@ function planScope(diagram, state, scope, gaps) {
       if (tested && compareCosts(tested.cost, best.cost) < 0) best = tested;
     }
     if (best === previous) break;
+  }
+
+  const height = ({ plan }) => boundsOf(members.filter((figure) => figure.kind === 'node' || figure.host)
+    .map((figure) => toLocal(plan.boxes.get(figure)))).height;
+  const packed = [...outgoing.values()].some((flows) => flows.length > 1)
+    ? prepare(layoutProcess(units, graph, spacing, { compact, reuseBranchRows: true }))
+    : null;
+  if (packed && packed.growth <= best.growth && height(packed) < height(best) &&
+      respectsGaps(units, packed.plan, spacing, toLocal)) {
+    const tested = evaluate(packed);
+    // A shorter drawing is worthwhile when crossings, shared lines and bends
+    // are at least as good by the usual routing priorities.
+    if (tested && compareCosts(tested.cost.slice(0, 3), best.cost.slice(0, 3)) <= 0) best = tested;
   }
 
   const oldScope = state.boxes.get(scope);

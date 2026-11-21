@@ -202,6 +202,42 @@ test('grows a nested subprocess and a lane, shifting a neighboring pool with its
   assert.equal(planAlignment(d, gaps).boxes.size, 0);
 });
 
+test('reuses a row for separate detours and keeps the compact layout on a second run', () => {
+  const d = diagram();
+  const pool = d.add('pool', box(0, 0, 600, 250), { kind: 'pool', header: 30 });
+  const node = (id, bounds, type = 'Task') => d.add(id, bounds, { scope: pool, type: 'bpmn:' + type });
+  const start = node('start', box(152, 32, 36, 36), 'StartEvent');
+  const first = node('first', box(235, 25, 50, 50), 'ExclusiveGateway');
+  const bypass = node('bypass', box(60, 120, 100, 80));
+  const task = node('task', box(230, 120, 100, 80));
+  const second = node('second', box(375, 135, 50, 50), 'ExclusiveGateway');
+  const upper = node('upper', box(320, 10, 100, 80));
+  const lower = node('lower', box(440, 120, 100, 80));
+  const merge = node('merge', box(535, 45, 50, 50), 'ExclusiveGateway');
+  const end = node('end', box(492, 12, 36, 36), 'EndEvent');
+  const main = [d.connect(start, first), d.connect(first, task), d.connect(task, second), d.connect(second, lower)];
+  d.connect(first, bypass);
+  d.connect(bypass, task);
+  d.connect(second, upper);
+  d.connect(upper, merge);
+  d.connect(lower, merge);
+  d.connect(merge, end);
+
+  const spacing = { x: 60, y: 40 };
+  const plan = planAlignment(d, spacing);
+  assert.deepEqual(plan.skipped, []);
+  assert.equal(finalBox(plan, pool).height, 250);
+  assert.equal(finalBox(plan, bypass).y, finalBox(plan, upper).y);
+  assert.equal(finalBox(plan, lower).y - finalBox(plan, upper).y, 120);
+  for (const edge of main) assert.equal(plan.routes.get(edge).length, 2);
+  assert.deepEqual(routeCost(plan.routes.values()).slice(0, 3), [0, 0, 4]);
+
+  apply(plan);
+  const repeated = planAlignment(d, spacing);
+  assert.equal(repeated.boxes.size, 0);
+  assert.deepEqual(repeated.routes, plan.routes);
+});
+
 test('swaps complete neighboring branches when the routed diagram scores better', () => {
   const d = diagram();
   const figures = [
