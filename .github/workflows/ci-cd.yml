@@ -35,6 +35,13 @@ jobs:
       - name: Run Chromium regression test
         id: e2e
         run: npm run test:e2e
+      - name: Upload editor screenshots
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: editor-screenshots
+          path: test-results/**/*.png
+          retention-days: 7
       - name: Upload Playwright trace
         if: failure() && steps.e2e.outcome == 'failure'
         uses: actions/upload-artifact@v7
