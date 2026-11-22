@@ -1,0 +1,2104 @@
+{
+  "gaps": {
+    "x": 40,
+    "y": 30
+  },
+  "cases": {
+    "acyclic-reorder": {
+      "nodes": 3,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          2,
+          1080
+        ],
+        "straightDefaults": [
+          1,
+          1
+        ],
+        "area": 127300
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          2,
+          456
+        ],
+        "straightDefaults": [
+          0,
+          1
+        ],
+        "area": 33600
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Process",
+          "elk": {
+            "area": 33280,
+            "routeCost": [
+              0,
+              58,
+              4,
+              432
+            ],
+            "routedFlows": 3
+          },
+          "packed": {
+            "area": 33600,
+            "overlaps": [],
+            "straightPassage": [
+              "SB",
+              "BA"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              2,
+              456
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [
+          "BA"
+        ],
+        "exceptions": {
+          "SA": "The default skips intermediate node B in the forward order S, B, A."
+        }
+      }
+    },
+    "annotation": {
+      "nodes": 2,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          90
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 23200
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          60
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 20800
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Process",
+          "elk": {
+            "area": 20640,
+            "routeCost": [
+              0,
+              0,
+              0,
+              58
+            ],
+            "routedFlows": 1
+          },
+          "packed": {
+            "area": 20800,
+            "overlaps": [],
+            "straightPassage": [
+              "Continue"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              60
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "collaboration": {
+      "nodes": 4,
+      "reason": "graphCollaboration",
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          242
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 365800
+      },
+      "final": null,
+      "shared": [],
+      "stages": [],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "compact-loop": {
+      "nodes": 5,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [
+          "BackToTask"
+        ],
+        "localRetreat": 120,
+        "routeCost": [
+          0,
+          0,
+          1,
+          620
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 5292000
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          3,
+          756
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 174000
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 98592,
+            "routeCost": [
+              0,
+              68,
+              4,
+              654
+            ],
+            "routedFlows": 5
+          },
+          "packed": {
+            "area": 98700,
+            "overlaps": [],
+            "straightPassage": [
+              "Proceed",
+              "Enter",
+              "Across"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              3,
+              756
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "incident-escalation": {
+      "nodes": 7,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [
+          "Severe"
+        ],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          4,
+          1548
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 585900
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          5,
+          850
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 263200
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 147840,
+            "routeCost": [
+              0,
+              20,
+              4,
+              572
+            ],
+            "routedFlows": 6
+          },
+          "packed": {
+            "area": 249100,
+            "overlaps": [],
+            "straightPassage": [
+              "ToTriage",
+              "Typical",
+              "ClosedNormally"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              5,
+              850
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "invoice-approval": {
+      "nodes": 8,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [
+          "ForReview",
+          "Approved"
+        ],
+        "localRetreat": 274,
+        "routeCost": [
+          0,
+          0,
+          5,
+          2688
+        ],
+        "straightDefaults": [
+          0,
+          1
+        ],
+        "area": 834900
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 40,
+        "routeCost": [
+          0,
+          26,
+          8,
+          1816
+        ],
+        "straightDefaults": [
+          0,
+          1
+        ],
+        "area": 486000
+      },
+      "shared": [
+        {
+          "flows": [
+            "ForReview",
+            "Late"
+          ],
+          "segments": [
+            {
+              "axis": "y",
+              "level": 400,
+              "low": 90,
+              "high": 116
+            }
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 139446,
+            "routeCost": [
+              0,
+              45,
+              4,
+              695
+            ],
+            "routedFlows": 7
+          },
+          "packed": {
+            "area": 469800,
+            "overlaps": [],
+            "straightPassage": [
+              "RegisterInvoice",
+              "Reviewed",
+              "Pay"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              26,
+              8,
+              1816
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [
+          "Reviewed",
+          "Pay"
+        ],
+        "exceptions": {
+          "Approved": "The default crosses from the review lane into the accounting lane."
+        }
+      }
+    },
+    "linear": {
+      "nodes": 3,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          144
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 25280
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          114
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 22880
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Process",
+          "elk": {
+            "area": 23040,
+            "routeCost": [
+              0,
+              0,
+              0,
+              116
+            ],
+            "routedFlows": 2
+          },
+          "packed": {
+            "area": 22880,
+            "overlaps": [],
+            "straightPassage": [
+              "Begin",
+              "Finish"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              114
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "order-fulfilment": {
+      "nodes": 7,
+      "reason": "graphCollaboration",
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          644
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 897000
+      },
+      "final": null,
+      "shared": [],
+      "stages": [],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "pool-subprocess": {
+      "nodes": 4,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          202
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 376000
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          122
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 159500
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Sub",
+          "elk": {
+            "area": 20640,
+            "routeCost": [
+              0,
+              0,
+              0,
+              58
+            ],
+            "routedFlows": 1
+          },
+          "packed": {
+            "area": 20800,
+            "overlaps": [],
+            "straightPassage": [
+              "Inner"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              60
+            ]
+          }
+        },
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 82460,
+            "routeCost": [
+              0,
+              0,
+              0,
+              58
+            ],
+            "routedFlows": 1
+          },
+          "packed": {
+            "area": 83220,
+            "overlaps": [],
+            "straightPassage": [
+              "Outer"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              62
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "self-loop": {
+      "nodes": 3,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          8,
+          6,
+          896
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 47124
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          16,
+          6,
+          606
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 28028
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Process",
+          "elk": {
+            "area": 28224,
+            "routeCost": [
+              0,
+              0,
+              0,
+              116
+            ],
+            "routedFlows": 2
+          },
+          "packed": {
+            "area": 28028,
+            "overlaps": [],
+            "straightPassage": [
+              "SA",
+              "AT"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              16,
+              6,
+              606
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "shared-data": {
+      "nodes": 2,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          50
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 61600
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          60
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 48024
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Process",
+          "elk": {
+            "area": 49984,
+            "routeCost": [
+              0,
+              0,
+              0,
+              58
+            ],
+            "routedFlows": 1
+          },
+          "packed": {
+            "area": 48024,
+            "overlaps": [],
+            "straightPassage": [
+              "AB"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              60
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "special-shapes": {
+      "nodes": 6,
+      "reason": "graphGroup",
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          160
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 326700
+      },
+      "final": null,
+      "shared": [],
+      "stages": [],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "split-merge": {
+      "nodes": 4,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          2,
+          700
+        ],
+        "straightDefaults": [
+          1,
+          1
+        ],
+        "area": 98000
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          2,
+          480
+        ],
+        "straightDefaults": [
+          1,
+          1
+        ],
+        "area": 65100
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Process",
+          "elk": {
+            "area": 65728,
+            "routeCost": [
+              0,
+              58,
+              4,
+              488
+            ],
+            "routedFlows": 4
+          },
+          "packed": {
+            "area": 65100,
+            "overlaps": [],
+            "straightPassage": [
+              "Main",
+              "JoinA"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              2,
+              480
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [
+          "Main"
+        ],
+        "exceptions": {}
+      }
+    },
+    "supplier-onboarding": {
+      "nodes": 9,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          489
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 910000
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          354
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 732000
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Contract",
+          "elk": {
+            "area": 18060,
+            "routeCost": [
+              0,
+              0,
+              0,
+              58
+            ],
+            "routedFlows": 1
+          },
+          "packed": {
+            "area": 18200,
+            "overlaps": [],
+            "straightPassage": [
+              "ToSign"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              60
+            ]
+          }
+        },
+        {
+          "scope": "Onboarding",
+          "elk": {
+            "area": 195488,
+            "routeCost": [
+              0,
+              0,
+              0,
+              116
+            ],
+            "routedFlows": 2
+          },
+          "packed": {
+            "area": 191400,
+            "overlaps": [],
+            "straightPassage": [
+              "ToContract",
+              "ToActivate"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              120
+            ]
+          }
+        },
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 562548,
+            "routeCost": [
+              0,
+              0,
+              0,
+              174
+            ],
+            "routedFlows": 3
+          },
+          "packed": {
+            "area": 553860,
+            "overlaps": [],
+            "straightPassage": [
+              "StartOnboarding",
+              "AuditSupplier",
+              "PublishSupplier"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              174
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "tight-pool": {
+      "nodes": 4,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [
+          "ReviewToDecision"
+        ],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          1,
+          322
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 106400
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          3,
+          754
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 183600
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 34936,
+            "routeCost": [
+              0,
+              58,
+              4,
+              412
+            ],
+            "routedFlows": 4
+          },
+          "packed": {
+            "area": 173400,
+            "overlaps": [],
+            "straightPassage": [
+              "StartToReview",
+              "DecisionToEnd"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              3,
+              754
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [
+          "StartToReview",
+          "DecisionToEnd"
+        ],
+        "exceptions": {}
+      }
+    },
+    "timer-branch": {
+      "nodes": 3,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          1,
+          320
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 59400
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          1,
+          224
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 43680
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Process",
+          "elk": {
+            "area": 42312,
+            "routeCost": [
+              0,
+              10,
+              2,
+              222
+            ],
+            "routedFlows": 2
+          },
+          "packed": {
+            "area": 43680,
+            "overlaps": [],
+            "straightPassage": [
+              "Success"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              1,
+              224
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "vertical-compact-loop": {
+      "nodes": 5,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [
+          "BackToTask"
+        ],
+        "localRetreat": 120,
+        "routeCost": [
+          0,
+          0,
+          1,
+          620
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 5292000
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          3,
+          716
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 170500
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 96792,
+            "routeCost": [
+              0,
+              58,
+              4,
+              614
+            ],
+            "routedFlows": 5
+          },
+          "packed": {
+            "area": 96800,
+            "overlaps": [],
+            "straightPassage": [
+              "Proceed",
+              "Enter",
+              "Across"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              3,
+              716
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "vertical-pool": {
+      "nodes": 3,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          184
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 171600
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          94
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 68400
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 24800,
+            "routeCost": [
+              0,
+              0,
+              0,
+              96
+            ],
+            "routedFlows": 2
+          },
+          "packed": {
+            "area": 24600,
+            "overlaps": [],
+            "straightPassage": [
+              "Begin",
+              "Finish"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              94
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "invoice-lifecycle": {
+      "nodes": 34,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [
+          "To_Review_1",
+          "To_Payment_1"
+        ],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          2,
+          4214
+        ],
+        "straightDefaults": [
+          1,
+          1
+        ],
+        "area": 4118400
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          4,
+          3510
+        ],
+        "straightDefaults": [
+          0,
+          1
+        ],
+        "area": 2973300
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 454880,
+            "routeCost": [
+              0,
+              58,
+              4,
+              3140
+            ],
+            "routedFlows": 34
+          },
+          "packed": {
+            "area": 2958000,
+            "overlaps": [],
+            "straightPassage": [
+              "To_Intake_1",
+              "To_Intake_2",
+              "To_Intake_3",
+              "To_Intake_4",
+              "To_Intake_5",
+              "To_Intake_6",
+              "To_Intake_7",
+              "To_Intake_8",
+              "To_Review_2",
+              "To_Review_3",
+              "To_Split",
+              "To_Exception_1",
+              "To_Review_4",
+              "To_Exception_2",
+              "To_Exception_3",
+              "To_Exception_4",
+              "To_Exception_5",
+              "To_Exception_6",
+              "ExceptionResolved",
+              "To_Review_5",
+              "To_Review_6",
+              "To_Review_7",
+              "To_Review_8",
+              "To_Payment_2",
+              "To_Payment_3",
+              "To_Payment_4",
+              "To_Payment_5",
+              "To_Payment_6",
+              "To_Payment_7",
+              "To_Payment_8",
+              "To_End"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              4,
+              3510
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "access-lifecycle": {
+      "nodes": 35,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [
+          "To_Security_1",
+          "To_Operations_1"
+        ],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          2,
+          4274
+        ],
+        "straightDefaults": [
+          1,
+          1
+        ],
+        "area": 4237200
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          4,
+          3570
+        ],
+        "straightDefaults": [
+          0,
+          1
+        ],
+        "area": 3065100
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 469120,
+            "routeCost": [
+              0,
+              58,
+              4,
+              3198
+            ],
+            "routedFlows": 35
+          },
+          "packed": {
+            "area": 3049800,
+            "overlaps": [],
+            "straightPassage": [
+              "To_Requester_1",
+              "To_Requester_2",
+              "To_Requester_3",
+              "To_Requester_4",
+              "To_Requester_5",
+              "To_Requester_6",
+              "To_Requester_7",
+              "To_Requester_8",
+              "To_Security_2",
+              "To_Security_3",
+              "To_Split",
+              "To_Exception_1",
+              "To_Security_4",
+              "To_Exception_2",
+              "To_Exception_3",
+              "To_Exception_4",
+              "To_Exception_5",
+              "To_Exception_6",
+              "ExceptionResolved",
+              "To_Security_5",
+              "To_Security_6",
+              "To_Security_7",
+              "To_Security_8",
+              "To_Operations_2",
+              "To_Operations_3",
+              "To_Operations_4",
+              "To_Operations_5",
+              "To_Operations_6",
+              "To_Operations_7",
+              "To_Operations_8",
+              "To_Operations_9",
+              "To_End"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              4,
+              3570
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    }
+  },
+  "hard": [
+    {
+      "name": "invoice-approval",
+      "r1": [],
+      "r2": [],
+      "r3": [],
+      "r4": [],
+      "crossings": 0,
+      "crossingLimit": 0,
+      "shared": [
+        {
+          "flows": [
+            "ForReview",
+            "Late"
+          ],
+          "segments": [
+            {
+              "axis": "y",
+              "level": 400,
+              "low": 90,
+              "high": 116
+            }
+          ]
+        }
+      ],
+      "missingStraight": []
+    }
+  ],
+  "review": [
+    {
+      "name": "acyclic-reorder",
+      "areaRatio": 0.26394344069128045,
+      "extraBends": [
+        [
+          "SA",
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "compact-loop",
+      "areaRatio": 0.032879818594104306,
+      "extraBends": [
+        [
+          "CloseLoop",
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "incident-escalation",
+      "areaRatio": 0.44922341696535245,
+      "extraBends": [
+        [
+          "Severe",
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "invoice-approval",
+      "areaRatio": 0.582105641394179,
+      "extraBends": [
+        [
+          "ForReview",
+          0,
+          1
+        ],
+        [
+          "Declined",
+          0,
+          1
+        ],
+        [
+          "Late",
+          2,
+          5
+        ]
+      ]
+    },
+    {
+      "name": "self-loop",
+      "areaRatio": 0.5947712418300654,
+      "extraBends": [
+        [
+          "EA",
+          2,
+          3
+        ]
+      ]
+    },
+    {
+      "name": "tight-pool",
+      "areaRatio": 1.7255639097744362,
+      "extraBends": [
+        [
+          "ReviewToDecision",
+          0,
+          1
+        ],
+        [
+          "TimeoutToEnd",
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "vertical-compact-loop",
+      "areaRatio": 0.032218442932728644,
+      "extraBends": [
+        [
+          "CloseLoop",
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "invoice-lifecycle",
+      "areaRatio": 0.7219551282051282,
+      "extraBends": [
+        [
+          "To_Review_1",
+          0,
+          1
+        ],
+        [
+          "Normal",
+          0,
+          2
+        ],
+        [
+          "To_Payment_1",
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "access-lifecycle",
+      "areaRatio": 0.7233786462758426,
+      "extraBends": [
+        [
+          "To_Security_1",
+          0,
+          1
+        ],
+        [
+          "Normal",
+          0,
+          2
+        ],
+        [
+          "To_Operations_1",
+          0,
+          1
+        ]
+      ]
+    }
+  ],
+  "exact": {
+    "acyclic-reorder": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "4cca60a6eccb397f8e02c7385e3fa8b0c6b36f5b634e91874407bb4cd87b3323"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "54a27197125fa8460901ac6e098576a2412c5fcd719aaa3db4758667e11dbe21"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "8d666dc9c558fa437f4198174a78dc510408229967f7167af748a35ab8a0c86f",
+        "legacy": "0e7ba761eb907f975798ea3dba514443a5d806d7b986546fb43d48760376002e"
+      }
+    },
+    "annotation": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "de7e5aa3d229dad900b6cb4830f9279e59619a135fe067b25fa21aa02bb747a7"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "887940fa0f4f70381746d44eeb97a4fcffe553a7172e70e3f439f2f947a03532"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "996625f9313efe7bf05c50b0db7dc645589ba81c19753caf16265ccf879cf1b6",
+        "legacy": "b3163a2e5dca648902ca4616bceeac1c9e10cabd19453c8a7f603d742b534619"
+      }
+    },
+    "collaboration": {
+      "original": {
+        "graph": {
+          "reason": "graphCollaboration",
+          "routes": "90933f5e9c4e14c83791ce71ac9396e6ba54d94e5f8cee0aff95d036c01c9fec"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "a2ada87b6c94eb8f94f2896d8602ebd789dec1d2ab90dbe4138dfa7b622a53e2"
+        }
+      },
+      "perturbed": {
+        "runs": 0,
+        "graph": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "legacy": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    "compact-loop": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "e6aae06cb3cbcef97860c694cc80cb7d2e0c367bdaaaaa98ceadf63ba77aab44"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "67766c9e0087c0927faa80592138ea5f06a4326cdcf0196566aeca31c4d47f57"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "b5fa2634febdff7324def32d0544bda1bf7c4fff0a0412832f43d29c62ea8071",
+        "legacy": "b4478a958b3f1eaad98f385f8b9c848dada410f2d8146bc48230ddfee27f7543"
+      }
+    },
+    "incident-escalation": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "2f6257e86eb6b5821797bd74ea7cb144438b01d8c710ea138bfb681d9731fe68"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "b65498ebd478f5299c870dfc854be29f5bc7bba0ed8fdad631b132ed938df414"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "7c7dbb8b4fed8cb76c57aaaa4bbbe31488dcf03b3531192a9355cec73fa2b0a1",
+        "legacy": "8867f0add99bfeafd264b5b7d68105b9cb5a8f307e5d4bfe656ce61768629209"
+      }
+    },
+    "invoice-approval": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "8c8fceded9cf2b4e3797062f9e4107c43a7d5a3061384c58b88b00aaa1731b5d"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "91ea5523c074b927b74cb56967559b8ea0de715e1da3386d45444b370e323dcf"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "520707fea7265938e2f1520bbad57c91421a4b421df3a41be70b9481ae11d06f",
+        "legacy": "fa5551fc90d663f478f134f3f310a01a547fe55bc452649e9fd7f96c8a9a7ce8"
+      }
+    },
+    "linear": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "6cb6f6cdfc291014c1bf3b0436e3fbbabbad8ccb154f59a8007ea01b4a47a639"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "5b6dd4f9b10625b59536db0eb986167555efdca2382e57fba0b02ced62e62d8e"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "c093ecd727d2a39f8fb31923e414885e0d3e28026fe7e2822e82284c21964a2b",
+        "legacy": "c54ccf01867b625189def287648ec713d27f4c510322b24e61bacb9a497f0bcc"
+      }
+    },
+    "order-fulfilment": {
+      "original": {
+        "graph": {
+          "reason": "graphCollaboration",
+          "routes": "067e8e90564a54a2a6d06b0af08d6e89aa51e06864ba1b5f55deef5dce22c474"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "78fe4daa4578f8760ed6733555b777b78d538d4ea0661d5590b4e804043fa20a"
+        }
+      },
+      "perturbed": {
+        "runs": 0,
+        "graph": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "legacy": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    "pool-subprocess": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "a746158cd9bdcffd3d88e92998518248fac2267ff6b8b5103f82b4210536c170"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "ef7f3a0fdf74b6d18fd4836dac1035c433a85120dd3a9619759a46a2c637dbcc"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "daa5a1e2fb15845a36501a6cd17c2390a68a67cc7a9162f8aaa66e9658eebcf5",
+        "legacy": "935a705a265c1ccc1a40a1bdac8b9193f39cb28e7201d0ff9c0a81019cb47ac3"
+      }
+    },
+    "self-loop": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "11e31de929adf81c52076dbd54f34d0e77e5357de9579c89a75928cae71864c5"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "defe163bff30daa0d753fec7a5f8ab182c380ce4b54adf820c135b5a97a53981"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "2483afcb94d55cfd999734be45ea56fd91d3f77b7b22e62df8d3a103e26de623",
+        "legacy": "3bcd9b29ba8ae240b7acb5ce1e98974f3aa2aa85698377ef712b9cd868a944e3"
+      }
+    },
+    "shared-data": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "b6cd35cb48a8bfd22474701c8afb3010baa8b9acd2a7653fd0128c48dfa8a151"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "4714260b233944ad25ca5fc64c6b3f326e996627edc4056188908f04c1120063"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "dc94b9e35037fef7d54c0cffc65778d4700ce01bb669456e71df1dec41b51a0b",
+        "legacy": "cfcc06e6f8616cc48ec7b408f4325250efa3947337d310659399bdb46e235a8d"
+      }
+    },
+    "special-shapes": {
+      "original": {
+        "graph": {
+          "reason": "graphGroup",
+          "routes": "5c79bd0ed346f61b6184cc210a6dd7a081c5d97ff5e69070f62a8d4c3fe652ab"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "54b371926dfa76a9a2fcf7cd7a59cbd17232ddf65c02984a73865aeb49e5c2d2"
+        }
+      },
+      "perturbed": {
+        "runs": 0,
+        "graph": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "legacy": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    "split-merge": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "0cf11f9f4dfb2d6010cc400b1cd2650b09bb24ce47d8ddbe5df2a4c49d88de86"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "3f57f2400b4966890f92481c93519f3036e09abec3de827779a948e2771fca8e"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "bd2fbb09e9b2bd41d1dc74337550a395d7b619e242bd1fba49dd9e91a12e0048",
+        "legacy": "613aa6bc67cffd5dbc97bb546f0428af4581659a5fe473593536093abdf8db6f"
+      }
+    },
+    "supplier-onboarding": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "cc57215ca68786b0c45bb3d18d89d8c609741cdd24953519682802b6f2ce5576"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "ab3c9c0c277cb2cf0f5e761f3dd9e5875895b78f0789452f47162cac21ff39a4"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "4cdbf2f1931c4eb339983121c983b297631d1ef52197603ac1af6b214736a667",
+        "legacy": "61e757a344d51be5eb1fc8edea559385c5f0256225fad54730087ee6d9421b25"
+      }
+    },
+    "tight-pool": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "ea3b9ef9d9a65703a7a18d9a9c9722add4b0bdce689813cff495cda23b769ad7"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "f84b93072742ec34411017345588d46d19baac66c53f597e363f214f0e00bb10"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "99a726f2de5d2f6414b11a71d0d0ca7a03543293dd3a983244d1ac707c84b41a",
+        "legacy": "e5b4e41444cecf35d2b45dfa895a3e7e8c509613b2f143140686ef7af9073b8e"
+      }
+    },
+    "timer-branch": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "2b03d010f79286e3ad5ff4c1509b09b5f985ff60a1cfd65622359bb70d96709d"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "3498fcb55319b0e1da817c11f4f52a87728e04d3a46ac547fd7c969aa70a2a52"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "11c7b01c0532535e88be6f3979fa7aaef4872f02a542b1496d215d1014c855f1",
+        "legacy": "59cefae0b3a7c765d6049c668f6a424790322fb68373859cadad20949c502646"
+      }
+    },
+    "vertical-compact-loop": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "2dfa5d8e4d5c9471eb943d64cc4ad1e54aac4691b297d5fea542d3ec18936046"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "1b2f2aca755709f96e37a4e396cbf0e658700f3c8ef64d1d89cb2f281f2b976a"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "da9a0d5dec4908390ec3a554c52a86bc13de9e8e1f5b0d8a8a02617c15248e25",
+        "legacy": "6f1b6430e18a81166c3016f2e3343f62f784df55d5bda64775b9028945eab3a6"
+      }
+    },
+    "vertical-pool": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "84b970f50c5040a98654b801e0bdb88bce65fb9a24c18f513d9f05e568308780"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "acdab1b7a78f7e4b7105ff057d084fe4a41fc7ee8920cd6983f36bf4e7b37475"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "c974de851b82df45d5dd1ec4c54550a8378109df78e1c6eb762f94809d871773",
+        "legacy": "5b16a5ff2c582a4df78ff73962cd158f23cbc4123ca15a5d28586a4b7fdf7f1f"
+      }
+    },
+    "invoice-lifecycle": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "4b86f00543b963f6a9ad1f0a0ec0ecc7bc52241c64141949730b39e7c7e5e1c3"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "05c634c4d12f818caf9b8b8e9f075a25a399faca80366f6c8c69865b7bee604d"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "32b355e681f47e659b7c22823183e2745697dcd087a3d984940fc2b93b0e8247",
+        "legacy": "085371fc839ece7ae617aea1b02e5ad89cf16e7f45c77b7fc94cd5a5cd65fcad"
+      }
+    },
+    "access-lifecycle": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "a142e0571b61d62cbc6f4fd1760539f6cb11a7710eef839b6c32d87c095d2882"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "a2845dca871c4696ba2c2b95136fd0cd8da720491728bda7b1bd682d717b26a9"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "69cda38c8f9b9b354cfa3388c729530f5a3a91f19415118adeb932766b81bde4",
+        "legacy": "2cc3c03eb5d6147f0b649eb3773fd43650442798facb78a10f5b05f26efed5c6"
+      }
+    }
+  }
+}

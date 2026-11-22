@@ -49,6 +49,11 @@ test('graph preview, atomic undo and redo, model order, and export/reopen', asyn
   await page.getByRole('button', { name: 'Повторить', exact: true }).click();
   expect(await readDiagram(page, await downloadDiagram(page))).toEqual(aligned);
   await expectNoChange(page);
+  expect(await readDiagram(page, await downloadDiagram(page))).toEqual(aligned);
+  await page.getByRole('button', { name: 'Отменить', exact: true }).click();
+  expect(await readDiagram(page, await downloadDiagram(page))).toEqual(original);
+  await page.getByRole('button', { name: 'Повторить', exact: true }).click();
+  expect(await readDiagram(page, await downloadDiagram(page))).toEqual(aligned);
 
   await reopen(page, after);
   await expectNoChange(page);
@@ -73,6 +78,7 @@ test('collaboration refusal is atomic and explains the unsupported region', asyn
 test('accepts invalid maximum gaps and restores focus after cancellation', async ({ page }) => {
   await page.goto('/');
   await openDiagram(page, fixture('vertical-pool'), 'vertical-pool.bpmn');
+  const original = await readDiagram(page, await downloadDiagram(page));
   await page.locator('#toggle-gaps').click();
   await page.locator('#max-gap-x').fill('1');
   await expect(page.locator('#max-gap-x')).toHaveAttribute('aria-invalid', 'true');
@@ -82,6 +88,7 @@ test('accepts invalid maximum gaps and restores focus after cancellation', async
   await expect(preview(page)).toBeHidden();
   await expect(graphButton(page)).toBeFocused();
   await expect(page.getByRole('button', { name: 'Отменить', exact: true })).toBeDisabled();
+  expect(await readDiagram(page, await downloadDiagram(page))).toEqual(original);
 });
 
 test('preserves data association directions and stable DI on repeat and reopen', async ({ page }) => {
