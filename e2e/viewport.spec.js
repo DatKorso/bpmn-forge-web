@@ -170,6 +170,7 @@ for (const [width, height] of [[1024, 600], [1280, 800], [1440, 900]]) {
     for (let i = 0; i < 3; i++) await zoomIn.click();
     const beforeAlignment = await end.boundingBox();
     await page.getByRole('button', { name: 'Выровнять схему' }).click();
+    await page.getByRole('button', { name: 'Применить', exact: true }).click();
     const summary = page.locator('#alignment-summary');
     await expect(summary).toHaveText('Выравнивание выполнено');
     await expect(summary).toBeInViewport({ ratio: 1 });

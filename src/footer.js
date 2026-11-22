@@ -4,6 +4,7 @@ const messageButton = byId('show-messages');
 const unreadIndicator = byId('unread-messages');
 const status = byId('status');
 const alignmentStatus = byId('alignment-status');
+const alignmentProgress = byId('alignment-progress');
 const alignmentSummary = byId('alignment-summary');
 const alignmentDetails = byId('alignment-details');
 const alignmentResult = byId('alignment-result');
@@ -77,9 +78,16 @@ export function reportOperationError(operation, message) {
   if (!messages.open) setUnread(true);
 }
 
+export function setAlignmentPending(pending) {
+  alignmentProgress.hidden = !pending;
+  alignmentStatus.classList.toggle('alignment-pending', pending);
+  if (pending) announce(alignmentProgress.textContent);
+  else if (status.textContent === alignmentProgress.textContent) status.replaceChildren();
+}
+
 export function reportAlignment({
   moved = 0, resized = 0, rerouted = 0, movedPools = 0, reroutedMessages = 0, movedLabels = 0, skipped = [], reason
-}) {
+}, revealRegion) {
   const severity = reason ? 'error' : skipped.length ? 'warning' : '';
   const movedShapes = moved - movedPools;
   const reroutedOrdinary = rerouted - reroutedMessages;
@@ -91,9 +99,19 @@ export function reportAlignment({
     `Перемещено подписей: ${movedLabels}. Пропущено участков: ${skipped.length}.`;
   alignmentResult.textContent = reason ?? counts;
   alignmentResult.dataset.severity = severity;
-  alignmentSkips.replaceChildren(...skipped.map(({ name, reason }) => {
+  alignmentSkips.replaceChildren(...skipped.map(({ name, reason, hint, scope }) => {
     const item = document.createElement('li');
-    item.textContent = `${name} — ${reason}.`;
+    const text = document.createElement('p');
+    text.textContent = `${name} — ${reason}. ${hint}`;
+    const reveal = document.createElement('button');
+    reveal.type = 'button';
+    reveal.textContent = 'Показать на схеме';
+    reveal.setAttribute('aria-label', `Показать на схеме: ${name}`);
+    reveal.addEventListener('click', () => {
+      messages.close();
+      revealRegion(scope);
+    });
+    item.append(text, reveal);
     return item;
   }));
   alignmentSkips.hidden = !skipped.length;

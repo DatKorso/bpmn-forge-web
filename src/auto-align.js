@@ -18,6 +18,15 @@ const SKIP_REASONS = {
   routing: 'не удалось провести все стрелки в обход фигур'
 };
 
+const SKIP_HINTS = {
+  bounds: 'Уменьшите минимальные отступы.',
+  annotations: 'Освободите место рядом со связанными аннотациями.',
+  collisions: 'Разнесите пересекающиеся фигуры или уменьшите минимальные отступы.',
+  poolStability: 'Разнесите перекрывающиеся пулы и повторите выравнивание.',
+  poolRouting: 'Освободите место между пулами для потоков сообщений.',
+  routing: 'Освободите проход между фигурами или увеличьте отступы.'
+};
+
 function getBounds({ x, y, width, height }) {
   return { x, y, width, height };
 }
@@ -239,16 +248,23 @@ class AutoAlign {
     return { diagram, ...alignmentSelection(diagram, elements) };
   }
 
-  apply(bounds, routes, relayout, labelGroups) {
+  prepareCommand(bounds, routes, relayout, labelGroups, result) {
     const hasGeometry = bounds.size || routes.size || relayout.length;
     const labels = hasGeometry ? null : gatewayLabelBounds(labelGroups);
     const context = { bounds: labels ?? bounds, routes, relayout,
       labelGroups: hasGeometry ? labelGroups : [], movedLabels: labels?.size ?? 0 };
-    if (hasGeometry || labels.size) this.commandStack.execute(COMMAND, context);
-    return context.movedLabels;
+    if (!hasGeometry && !labels.size) return result;
+    return {
+      ...result,
+      movedLabels: context.movedLabels,
+      apply: () => {
+        this.commandStack.execute(COMMAND, context);
+        return { ...result, movedLabels: context.movedLabels };
+      }
+    };
   }
 
-  runSelection(elements, gaps) {
+  planSelection(elements, gaps) {
     const selection = this.selection(elements);
     if (selection.reason) return selection;
     const plan = planSelection(selection.diagram, selection, gaps);
@@ -297,18 +313,18 @@ class AutoAlign {
       if (!sameWaypoints(waypoints, points)) routes.set(connection, points);
     }
 
-    const movedLabels = this.apply(bounds, routes, [], [{ diagram: selection.diagram, gateways: plan.labelGateways }]);
-    return {
+    const result = {
       moved: [...plan.boxes].filter(([{ box }, next]) => box.x !== next.x || box.y !== next.y).length,
       resized: [...plan.boxes].filter(([{ box }, next]) => box.width !== next.width || box.height !== next.height).length,
-      rerouted: routes.size, movedLabels,
+      rerouted: routes.size,
       movedPools: [...plan.boxes].filter(([{ kind, box }, next]) =>
         kind === 'pool' && (box.x !== next.x || box.y !== next.y)).length,
       reroutedMessages: [...routes.keys()].filter((connection) => is(connection, 'bpmn:MessageFlow')).length
     };
+    return this.prepareCommand(bounds, routes, [], [{ diagram: selection.diagram, gateways: plan.labelGateways }], result);
   }
 
-  run(gaps) {
+  planDiagram(gaps) {
     const bounds = new Map();
     const routes = new Map();
     const relayout = new Set();
@@ -341,13 +357,13 @@ class AutoAlign {
         if (!sameWaypoints(connection.waypoints, route)) routes.set(connection, route);
       }
       for (const { scope, reason } of plan.skipped) {
-        skipped.push({ name: regionName(scope), reason: SKIP_REASONS[reason] });
+        skipped.push({ scope, name: regionName(scope), reason: SKIP_REASONS[reason], hint: SKIP_HINTS[reason] });
       }
     }
 
-    const movedLabels = this.apply(bounds, routes, [...relayout], labelGroups);
-    return { moved, resized, rerouted: routes.size + relayout.size, skipped, movedPools, movedLabels,
+    const result = { moved, resized, rerouted: routes.size + relayout.size, skipped, movedPools,
       reroutedMessages: [...routes.keys()].filter((connection) => is(connection, 'bpmn:MessageFlow')).length };
+    return this.prepareCommand(bounds, routes, [...relayout], labelGroups, result);
   }
 }
 

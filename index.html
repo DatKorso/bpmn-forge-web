@@ -69,9 +69,10 @@
           <fieldset id="gap-uniform" hidden disabled>
             <label class="gap-field">Отступ по обеим осям
               <input id="uniform-gap" type="number" min="0" max="9007199254740991" step="1" value="80"
-                  aria-describedby="uniform-gap-error" required>
+                  aria-describedby="uniform-gap-error uniform-gap-hint" required>
             </label>
             <p id="uniform-gap-error" class="gap-error" hidden></p>
+            <p id="uniform-gap-hint" class="gap-hint">Целое число от нуля.</p>
           </fieldset>
           <fieldset id="gap-range">
             <fieldset>
@@ -80,7 +81,7 @@
                 <div>
                   <label class="gap-field">Минимум
                     <input id="gap-x" type="number" min="0" max="9007199254740991" step="1" value="60"
-                        aria-describedby="gap-x-error" required>
+                        aria-describedby="gap-x-error min-gap-hint" required>
                   </label>
                   <p id="gap-x-error" class="gap-error" hidden></p>
                 </div>
@@ -99,7 +100,7 @@
                 <div>
                   <label class="gap-field">Минимум
                     <input id="gap-y" type="number" min="0" max="9007199254740991" step="1" value="40"
-                        aria-describedby="gap-y-error" required>
+                        aria-describedby="gap-y-error min-gap-hint" required>
                   </label>
                   <p id="gap-y-error" class="gap-error" hidden></p>
                 </div>
@@ -112,17 +113,18 @@
                 </div>
               </div>
             </fieldset>
-            <p id="max-gap-hint" class="gap-hint">Оставьте максимум пустым, чтобы снять верхнее ограничение.</p>
+            <p id="min-gap-hint" class="gap-hint">Минимум — целое число от нуля.</p>
+            <p id="max-gap-hint" class="gap-hint">Максимум — целое число не меньше минимума. Оставьте поле пустым для выравнивания без верхнего ограничения.</p>
           </fieldset>
         </div>
         <span class="tool">
-          <button id="align-selection" type="button" aria-disabled="true" aria-describedby="selection-reason">Выровнять выделение</button>
+          <button id="align-selection" type="button" aria-keyshortcuts="Alt+Shift+Enter" aria-disabled="true" aria-describedby="selection-reason">Выровнять выделение</button>
           <span id="selection-reason" hidden>Выберите пул, дорожку, раскрытый подпроцесс или несколько фигур.</span>
-          <span id="selection-scope" hidden>Один пул или раскрытый подпроцесс подгоняется под содержимое. Несколько выбранных пулов перемещаются целиком.</span>
+          <span id="selection-scope" hidden>Один пул или раскрытый подпроцесс подгоняется под содержимое. Несколько выбранных пулов перемещаются целиком. Alt+Shift+Enter.</span>
         </span>
         <span class="tool">
-          <button id="align" class="primary" type="button" aria-describedby="alignment-scope" disabled>Выровнять схему</button>
-          <span id="alignment-scope" hidden>Выравнивает всю схему, включая пулы и потоки сообщений.</span>
+          <button id="align" class="primary" type="button" aria-keyshortcuts="Alt+Enter" aria-describedby="alignment-scope" disabled>Выровнять схему</button>
+          <span id="alignment-scope" hidden>Выравнивает всю схему, включая пулы и потоки сообщений. Alt+Enter.</span>
         </span>
       </form>
     </section>
@@ -190,6 +192,7 @@
         <span id="unread-messages" class="unread-indicator" hidden></span>
       </button>
       <span id="unread-description" hidden>Есть непрочитанные сообщения</span>
+      <span id="alignment-progress" class="alignment-summary" hidden>Расчёт выравнивания…</span>
       <div id="alignment-status" class="alignment-status" hidden>
         <span id="alignment-summary" class="alignment-summary"></span>
         <button id="alignment-details" type="button" aria-haspopup="dialog" aria-controls="messages">Подробнее</button>
@@ -227,6 +230,18 @@
           <p id="operation-message"></p>
           <ul id="operation-errors" hidden></ul>
         </section>
+      </div>
+    </dialog>
+
+    <dialog id="alignment-preview" class="footer-dialog" aria-labelledby="alignment-preview-title"
+        aria-describedby="alignment-preview-summary">
+      <header><h2 id="alignment-preview-title">Предпросмотр выравнивания</h2></header>
+      <div class="dialog-content">
+        <p id="alignment-preview-summary"></p>
+        <form method="dialog" class="confirm-actions">
+          <button value="apply" class="primary">Применить</button>
+          <button value="cancel" autofocus>Отмена</button>
+        </form>
       </div>
     </dialog>
 

@@ -20,6 +20,7 @@ async function alignImportedDiagram(page) {
   await expect(page.locator('#document-name')).toHaveAttribute('title', 'tight-pool.bpmn');
   await expect(dirty(page)).toBeEmpty();
   await page.locator('#align').click();
+  await page.getByRole('button', { name: 'Применить', exact: true }).click();
   await expect(dirty(page)).toHaveText('Есть несохранённые изменения');
 }
 
@@ -44,6 +45,7 @@ test('tracks the download checkpoint through undo, redo, and a new history branc
   await expect(dirty(page)).toBeEmpty();
   await undo(page).click();
   await page.locator('#align').click();
+  await page.getByRole('button', { name: 'Применить', exact: true }).click();
   await expect(redo(page)).toBeDisabled();
   await expect(dirty(page)).not.toBeEmpty();
   const beforeUnload = page.waitForEvent('dialog');

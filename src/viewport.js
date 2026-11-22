@@ -48,12 +48,14 @@ export function zoomDiagram(canvas, factor) {
 
 export function revealSelection(modeler) {
   const selection = modeler?.get('selection').get();
-  if (!selection?.length) return;
-  const canvas = modeler.get('canvas');
+  if (selection?.length) revealElements(modeler.get('canvas'), selection);
+}
+
+export function revealElements(canvas, elements) {
   canvas.resized();
   const bounds = visibleBounds(canvas);
   const { width, height } = canvas.getSize();
-  canvas.scrollToElement(selection, {
+  canvas.scrollToElement(elements, {
     left: bounds.left,
     top: bounds.top,
     right: width - bounds.right,

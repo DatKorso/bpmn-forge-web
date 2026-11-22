@@ -7,12 +7,12 @@ import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css';
 import 'bpmn-js-color-picker/colors/color-picker.css';
 import autoAlign from './auto-align.js';
 import { getUndoAction } from './bpmn-internals.js';
-import { clearAlignmentStatus, reportAlignment, reportOperation, reportOperationError, resetAlignment } from './footer.js';
+import { clearAlignmentStatus, reportAlignment, reportOperation, reportOperationError, resetAlignment, setAlignmentPending } from './footer.js';
 import keyboardPalette from './keyboard-palette.js';
 import { protectConditionalFlows, renderProperties } from './properties.js';
 import russian from './russian.js';
-import { reportGapValidity, updateToolTooltip } from './toolbar.js';
-import { fitDiagram, zoomDiagram } from './viewport.js';
+import { confirmAlignment, reportGapValidity, updateToolTooltip } from './toolbar.js';
+import { fitDiagram, revealElements, zoomDiagram } from './viewport.js';
 import './style.css';
 
 const EMPTY_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -36,12 +36,15 @@ const useUniformGap = byId('use-uniform-gap');
 const uniformGap = byId('uniform-gap');
 const rangeGapSettings = byId('gap-range');
 const uniformGapSettings = byId('gap-uniform');
+const align = byId('align');
 const alignSelection = byId('align-selection');
 const selectionReason = byId('selection-reason');
 const documentName = byId('document-name');
 const propertiesFields = byId('properties-fields');
 let modeler;
 let busy = false;
+let aligning = false;
+let highlighted = [];
 let filename = 'Новая схема.bpmn';
 let savedAction;
 let dirty = false;
@@ -72,10 +75,12 @@ function updateControls() {
 
   for (const id of ['new', 'open']) byId(id).disabled = busy;
   byId('download').disabled = busy || !modeler;
-  byId('align').disabled = busy || empty;
+  align.disabled = busy || empty;
   byId('undo').disabled = busy || !stack?.canUndo();
   byId('redo').disabled = busy || !stack?.canRedo();
-  const reason = busy || !modeler ? 'Дождитесь загрузки схемы.' : modeler.get('autoAlign').selection(selection).reason;
+  const reason = aligning ? 'Дождитесь завершения выравнивания.' : busy || !modeler
+    ? 'Дождитесь завершения операции со схемой.'
+    : modeler.get('autoAlign').selection(selection).reason;
   alignSelection.setAttribute('aria-disabled', String(Boolean(reason)));
   selectionReason.textContent = reason ?? '';
   alignSelection.setAttribute('aria-describedby', reason ? 'selection-reason' : 'selection-scope');
@@ -130,12 +135,14 @@ async function loadDiagram(readXML, nextFilename, message, operation = 'new') {
       if (modeler !== next) return;
       updateDirtyState();
       clearAlignmentStatus();
+      clearSkippedHighlight();
     });
     next.on(['commandStack.changed', 'root.set', 'selection.changed'], () => {
       if (modeler === next) updateControls();
     });
 
     const oldHost = workspace.querySelector('.diagram:not(.staging)');
+    clearSkippedHighlight();
     modeler?.destroy();
     oldHost?.remove();
 
@@ -279,7 +286,42 @@ function validateGaps() {
 
 const alignment = byId('alignment');
 alignment.addEventListener('submit', (event) => event.preventDefault());
-byId('gap-settings').addEventListener('input', validateGaps);
+const gapSettings = byId('gap-settings');
+gapSettings.addEventListener('input', validateGaps);
+
+const storageKey = 'bpmn-forge.alignment-gaps';
+const gapInputs = [gapX, gapY, maxGapX, maxGapY, uniformGap];
+let storedGaps = {};
+try {
+  const settings = JSON.parse(localStorage.getItem(storageKey));
+  if (settings && typeof settings === 'object') storedGaps = settings;
+} catch {
+  // Storage can be disabled by the browser.
+}
+useUniformGap.checked = storedGaps.uniform === true;
+for (const input of gapInputs) {
+  const value = storedGaps[input.id];
+  if (typeof value !== 'string') continue;
+  if ((!input.required && value === '') || (/^\d+$/.test(value) && Number.isSafeInteger(Number(value)))) {
+    input.value = value;
+  }
+}
+
+function storeGaps() {
+  if (gapSettings.querySelector('input:invalid')) return;
+  storedGaps.uniform = useUniformGap.checked;
+  const activeInputs = useUniformGap.checked ? [uniformGap] : [gapX, gapY, maxGapX, maxGapY];
+  for (const input of activeInputs) {
+    storedGaps[input.id] = input.value ? String(input.valueAsNumber) : '';
+  }
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(storedGaps));
+  } catch {
+    // Continue using the settings in this tab.
+  }
+}
+
+gapSettings.addEventListener('change', storeGaps);
 
 function updateGapMode() {
   const uniform = useUniformGap.checked;
@@ -310,26 +352,82 @@ function alignmentGaps() {
   };
 }
 
-byId('align').addEventListener('click', () => {
-  if (busy || !modeler || !checkGaps()) return;
+function clearSkippedHighlight() {
+  const canvas = modeler?.get('canvas');
+  for (const shape of highlighted) canvas.removeMarker(shape, 'alignment-skipped');
+  highlighted = [];
+}
+
+function revealSkippedRegion({ element, kind }) {
+  const registry = modeler.get('elementRegistry');
+  if (registry.get(element.id) !== element) return;
+  clearSkippedHighlight();
+  const canvas = modeler.get('canvas');
+  if (kind === 'root') {
+    canvas.setRootElement(element);
+    highlighted = element.children.filter((child) => !child.hidden && !child.waypoints && !child.labelTarget);
+    fitDiagram(canvas);
+  } else {
+    highlighted = [element];
+    revealElements(canvas, highlighted);
+  }
+  const outline = modeler.get('outline');
+  for (const shape of highlighted) {
+    outline.createOutline(shape);
+    canvas.addMarker(shape, 'alignment-skipped');
+  }
+  canvas.focus();
+}
+
+async function alignDiagram(button, trigger) {
+  if (busy || !modeler || button.disabled || button.getAttribute('aria-disabled') === 'true' || !checkGaps()) return;
+  const selected = button === alignSelection;
+  const selection = selected ? modeler.get('selection').get() : null;
+  const gaps = alignmentGaps();
+  storeGaps();
+  modeler.get('directEditing').complete();
+  const current = modeler;
+  const action = currentAction();
+  busy = aligning = true;
+  setAlignmentPending(true);
+  updateControls();
 
   try {
-    reportAlignment(modeler.get('autoAlign').run(alignmentGaps()));
+    // Let Chromium paint the pending state before synchronous planning.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const autoAlign = current.get('autoAlign');
+    const plan = selected ? autoAlign.planSelection(selection, gaps) : autoAlign.planDiagram(gaps);
+    setAlignmentPending(false);
+    if (plan.apply && !await confirmAlignment(plan)) return;
+    if (current !== modeler || action !== currentAction()) {
+      reportAlignment({ reason: 'Схема изменилась. Запустите выравнивание ещё раз.' });
+      return;
+    }
+    clearSkippedHighlight();
+    reportAlignment(plan.apply ? plan.apply() : plan, revealSkippedRegion);
   } catch (error) {
-    reportAlignment({ reason: 'Не удалось выполнить автовыравнивание.' });
+    reportAlignment({ reason: selected ? 'Не удалось выровнять выделение.' : 'Не удалось выполнить автовыравнивание.' });
     console.error(error);
+  } finally {
+    busy = aligning = false;
+    setAlignmentPending(false);
+    updateControls();
+    if (document.activeElement === document.body) (trigger === document.body ? button : trigger).focus();
   }
-});
+}
 
-alignSelection.addEventListener('click', () => {
-  if (busy || !modeler || alignSelection.getAttribute('aria-disabled') === 'true' || !checkGaps()) return;
-  try {
-    const selection = modeler.get('selection').get();
-    reportAlignment(modeler.get('autoAlign').runSelection(selection, alignmentGaps()));
-  } catch (error) {
-    reportAlignment({ reason: 'Не удалось выровнять выделение.' });
-    console.error(error);
-  }
+for (const button of [align, alignSelection]) {
+  button.addEventListener('click', () => alignDiagram(button, button));
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !document.querySelector('dialog[open]')) clearSkippedHighlight();
+  if (event.defaultPrevented || event.repeat || event.key !== 'Enter' || !event.altKey || event.ctrlKey || event.metaKey ||
+      event.target.closest('dialog, input, textarea, select, [contenteditable]')) return;
+  const button = event.shiftKey ? alignSelection : align;
+  if (busy || button.disabled || button.getAttribute('aria-disabled') === 'true') return;
+  event.preventDefault();
+  alignDiagram(button, document.activeElement);
 });
 
 new ResizeObserver(() => modeler?.get('canvas').resized()).observe(workspace);

@@ -6,6 +6,9 @@ const fixture = fileURLToPath(new URL('../test/fixtures/tight-pool.bpmn', import
 const collaborationFixture = fileURLToPath(new URL('../test/fixtures/collaboration.bpmn', import.meta.url));
 const loopFixture = fileURLToPath(new URL('../test/fixtures/compact-loop.bpmn', import.meta.url));
 
+const preview = (page) => page.getByRole('dialog', { name: 'Предпросмотр выравнивания' });
+const applyPreview = (page) => preview(page).getByRole('button', { name: 'Применить', exact: true }).click();
+
 async function openDiagram(page, path, filename) {
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
@@ -59,7 +62,11 @@ async function readDiagram(page, download) {
       targetRef: flow.getAttribute('targetRef')
     }));
 
-    return { shapes, labels, routes, lanes, flows: connections('sequenceFlow'), messages: connections('messageFlow') };
+    const timers = byId(elements(doc, model, 'boundaryEvent'), 'id', (event) => ({
+      attachedTo: event.getAttribute('attachedToRef'),
+      duration: elements(event, model, 'timeDuration')[0]?.textContent.trim() ?? null
+    }));
+    return { shapes, labels, routes, lanes, timers, flows: connections('sequenceFlow'), messages: connections('messageFlow') };
   }, xml);
 }
 
@@ -89,6 +96,7 @@ test('aligns an imported BPMN, restores it through undo and redo, and preserves 
   expect(Object.keys(original.routes).sort()).toEqual(Object.keys(original.flows).sort());
 
   await align.click();
+  await applyPreview(page);
   await expect(summary).toHaveText('Выравнивание выполнено');
   await page.getByRole('button', { name: 'Подробнее' }).click();
   await expect(page.locator('#alignment-result')).toContainText(/Контейнеров с изменённым размером: [1-9]/);
@@ -126,6 +134,7 @@ test('moves a task and resizes a pool after applying alignment bounds', async ({
   await page.goto('/');
   await openDiagram(page, fixture, 'tight-pool.bpmn');
   await page.getByRole('button', { name: 'Выровнять схему' }).click();
+  await applyPreview(page);
   await expect(page.locator('#alignment-summary')).toHaveText('Выравнивание выполнено');
   const snapshot = async () => readDiagram(page, await downloadDiagram(page));
   const aligned = await snapshot();
@@ -168,6 +177,7 @@ test('preserves a compact gateway loop through alignment, history, and reopening
   await page.getByRole('button', { name: 'Отступы' }).click();
   await page.getByRole('checkbox', { name: 'Единый отступ' }).check();
   await align.click();
+  await applyPreview(page);
   await expect(summary).toHaveText('Выравнивание выполнено');
 
   const aligned = await snapshot();
@@ -204,6 +214,7 @@ test('keeps message flow endpoints through collaboration alignment, undo, redo a
   const original = await snapshot();
 
   await page.getByRole('button', { name: 'Выровнять схему' }).click();
+  await applyPreview(page);
   await expect(page.locator('#alignment-summary')).toHaveText('Выравнивание выполнено');
   const aligned = await snapshot();
   expect(aligned.shapes.Sender).not.toEqual(original.shapes.Sender);
@@ -246,7 +257,7 @@ test('opens BPMN from the empty canvas and reports spacing errors below the fiel
   const maxBox = await max.boundingBox();
   expect(minBox.y).toBeCloseTo(maxBox.y);
   expect(maxBox.x).toBeGreaterThan(minBox.x + minBox.width);
-  await expect(max).toHaveAccessibleDescription('Оставьте максимум пустым, чтобы снять верхнее ограничение.');
+  await expect(max).toHaveAccessibleDescription(/Оставьте поле пустым для выравнивания без верхнего ограничения/);
 
   await max.fill('20');
   const verticalMin = vertical.getByRole('spinbutton', { name: 'Минимум' });
@@ -265,5 +276,106 @@ test('opens BPMN from the empty canvas and reports spacing errors below the fiel
   await expect(verticalMin).toBeFocused();
   await verticalMin.fill('40');
   await align.click();
+  await applyPreview(page);
   await expect(page.locator('#alignment-summary')).toHaveText('Выравнивание выполнено');
 });
+
+test('previews alignment from the keyboard, restores focus on cancel, and remembers spacing', async ({ page }, testInfo) => {
+  await page.goto('/');
+  await openDiagram(page, fixture, 'tight-pool.bpmn');
+  const original = await readDiagram(page, await downloadDiagram(page));
+  const settings = page.getByRole('button', { name: 'Отступы' });
+  const uniform = page.getByRole('checkbox', { name: 'Единый отступ' });
+  const gap = page.getByRole('spinbutton', { name: 'Отступ по обеим осям' });
+  const align = page.getByRole('button', { name: 'Выровнять схему' });
+
+  await settings.click();
+  await uniform.check();
+  await gap.fill('70');
+  await gap.press('Alt+Enter');
+  await expect(preview(page)).toBeHidden();
+  await gap.press('Tab');
+  await align.focus();
+  await expect(align).toHaveAttribute('aria-keyshortcuts', 'Alt+Enter');
+  await page.evaluate(() => {
+    const progress = document.getElementById('alignment-progress');
+    window.observedAlignmentBusy = new Promise((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (progress.hidden) return;
+        observer.disconnect();
+        resolve(document.getElementById('align').disabled &&
+          document.getElementById('workspace').getAttribute('aria-busy') === 'true');
+      });
+      observer.observe(progress, { attributes: true, attributeFilter: ['hidden'] });
+    });
+  });
+
+  await page.keyboard.press('Alt+Enter');
+  await expect(preview(page)).toHaveAccessibleDescription(/Переместится фигур: [1-9]/);
+  expect(await page.evaluate(() => window.observedAlignmentBusy)).toBe(true);
+  await expect(preview(page).getByRole('button', { name: 'Отмена', exact: true })).toBeFocused();
+  await expect(page.locator('#unsaved-changes')).toBeEmpty();
+  await page.screenshot({ path: testInfo.outputPath('alignment-preview.png') });
+  await page.keyboard.press('Escape');
+  await expect(preview(page)).toBeHidden();
+  await expect(align).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Отменить', exact: true })).toBeDisabled();
+  expect(await readDiagram(page, await downloadDiagram(page))).toEqual(original);
+
+  const pool = await page.locator('[data-element-id="Pool"] .djs-visual').boundingBox();
+  await page.mouse.click(pool.x + 12, pool.y + pool.height / 2);
+  const selection = page.getByRole('button', { name: 'Выровнять выделение' });
+  await expect(selection).toBeEnabled();
+  await expect(selection).toHaveAttribute('aria-keyshortcuts', 'Alt+Shift+Enter');
+  await selection.focus();
+  await page.keyboard.press('Alt+Shift+Enter');
+  await expect(preview(page)).toBeVisible();
+  await preview(page).getByRole('button', { name: 'Отмена', exact: true }).click();
+  await expect(selection).toBeFocused();
+
+  await page.reload();
+  await settings.click();
+  await expect(uniform).toBeChecked();
+  await expect(gap).toHaveValue('70');
+});
+
+test('explains a skipped pool and reveals it on the canvas', async ({ page }, testInfo) => {
+  await page.goto('/');
+  await openDiagram(page, fixture, 'tight-pool.bpmn');
+  await page.getByRole('button', { name: 'Отступы' }).click();
+  await page.getByRole('checkbox', { name: 'Единый отступ' }).check();
+  await page.getByRole('spinbutton', { name: 'Отступ по обеим осям' }).fill(String(Number.MAX_SAFE_INTEGER));
+  await page.getByRole('button', { name: 'Выровнять схему' }).click();
+
+  await expect(page.locator('#alignment-summary')).toHaveText('Выравнивание с пропусками');
+  await page.getByRole('button', { name: 'Подробнее' }).click();
+  const skips = page.locator('#alignment-skips');
+  await expect(skips).toContainText('Уменьшите минимальные отступы.');
+  await skips.getByRole('button', { name: /Показать на схеме.*Заявки/ }).click();
+  const outlined = page.locator('[data-element-id="Pool"].alignment-skipped > .djs-outline');
+  await expect(outlined).toBeVisible();
+  await expect(page.locator('#workspace .djs-container > svg')).toBeFocused();
+  await page.screenshot({ path: testInfo.outputPath('alignment-skipped-pool.png') });
+  await page.keyboard.press('Escape');
+  await expect(outlined).toHaveCount(0);
+});
+
+for (const scenario of ['invoice-approval', 'order-fulfilment', 'incident-escalation', 'supplier-onboarding', 'special-shapes']) {
+  test(`aligns and exports ${scenario} with its BPMN relations intact`, async ({ page }) => {
+    const path = fileURLToPath(new URL(`../test/fixtures/${scenario}.bpmn`, import.meta.url));
+    await page.goto('/');
+    await openDiagram(page, path, `${scenario}.bpmn`);
+    const snapshot = async () => readDiagram(page, await downloadDiagram(page));
+    const before = await snapshot();
+
+    await page.getByRole('button', { name: 'Выровнять схему' }).click();
+    await applyPreview(page);
+    await expect(page.locator('#alignment-summary')).toHaveText('Выравнивание выполнено');
+    const after = await snapshot();
+    expect(after.shapes).not.toEqual(before.shapes);
+    expect(after.lanes).toEqual(before.lanes);
+    expect(after.timers).toEqual(before.timers);
+    expect(after.flows).toEqual(before.flows);
+    expect(after.messages).toEqual(before.messages);
+  });
+}
