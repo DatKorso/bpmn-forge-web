@@ -38,7 +38,7 @@ function figureKind(shape) {
 
 function snapshot(root, shapes, elementRegistry) {
   const orientation = (element) => isHorizontal(element) ?? isDirectionHorizontal(element, elementRegistry);
-  const diagramRoot = { element: root, kind: 'root', horizontal: orientation(root), header: 0 };
+  const diagramRoot = { id: root.id, element: root, kind: 'root', header: 0 };
   const byElement = new Map(shapes.map((element) => [element, {
     id: element.id,
     type: element.type,
@@ -48,19 +48,27 @@ function snapshot(root, shapes, elementRegistry) {
     labels: element.labels.filter((label) => !label.hidden).map(getBounds),
     expanded: is(element, 'bpmn:SubProcess') && isExpanded(element)
   }]));
-  const laneCache = new Map();
-
+  const scopes = new Map(shapes.map((element) => [element, getLanesRoot(element)]));
+  const scopeOf = (element) => {
+    const container = byElement.get(scopes.get(element));
+    return container && container.element !== element ? container : diagramRoot;
+  };
+  const laneDirections = new Map();
   for (const [element, figure] of byElement) {
-    const scope = getLanesRoot(element);
-    const container = byElement.get(scope);
-    figure.scope = container && container !== figure ? container : diagramRoot;
+    if (figure.kind !== 'lane' || isHorizontal(scopes.get(element)) != null) continue;
+    const horizontal = isHorizontal(element);
+    if (horizontal != null) laneDirections.set(scopeOf(element), horizontal);
+  }
+  diagramRoot.horizontal = laneDirections.get(diagramRoot) ?? orientation(root);
+
+  const laneCache = new Map();
+  for (const [element, figure] of byElement) {
+    const scope = scopes.get(element);
+    figure.scope = scopeOf(element);
     figure.parent = byElement.get(element.parent) ?? diagramRoot;
     figure.host = byElement.get(element.host);
     figure.header = ['pool', 'lane'].includes(figure.kind) ? LANE_INDENTATION : 0;
-    figure.horizontal = orientation(figure.kind === 'pool' ? element : scope);
-    if (figure.kind === 'lane' && isHorizontal(scope) == null && isHorizontal(element) != null) {
-      figure.scope.horizontal = isHorizontal(element);
-    }
+    figure.horizontal = laneDirections.get(figure) ?? orientation(figure.kind === 'pool' ? element : scope);
 
     if (figure.kind === 'node') {
       if (!laneCache.has(scope)) laneCache.set(scope, collectLanes(scope));
@@ -191,7 +199,7 @@ class AlignCommand {
     for (const [connection, waypoints] of routes) {
       this.modeling.updateWaypoints(connection, waypoints, { createElementsBehavior: false });
     }
-    if (labelGroups) {
+    if (labelGroups?.length) {
       const labels = gatewayLabelBounds(labelGroups);
       context.movedLabels = labels.size;
       if (labels.size) this.commandStack.execute(COMMAND, { bounds: labels, routes: new Map(), relayout: [] });
@@ -232,14 +240,12 @@ class AutoAlign {
   }
 
   apply(bounds, routes, relayout, labelGroups) {
-    if (bounds.size || routes.size || relayout.length) {
-      const context = { bounds, routes, relayout, labelGroups };
-      this.commandStack.execute(COMMAND, context);
-      return context.movedLabels;
-    }
-    const labels = gatewayLabelBounds(labelGroups);
-    if (labels.size) this.commandStack.execute(COMMAND, { bounds: labels, routes, relayout });
-    return labels.size;
+    const hasGeometry = bounds.size || routes.size || relayout.length;
+    const labels = hasGeometry ? null : gatewayLabelBounds(labelGroups);
+    const context = { bounds: labels ?? bounds, routes, relayout,
+      labelGroups: hasGeometry ? labelGroups : [], movedLabels: labels?.size ?? 0 };
+    if (hasGeometry || labels.size) this.commandStack.execute(COMMAND, context);
+    return context.movedLabels;
   }
 
   runSelection(elements, gaps) {
