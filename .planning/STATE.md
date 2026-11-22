@@ -1,10 +1,10 @@
 ---
 gsd_state_version: "1.0"
 status: unknown
-last_updated: "2026-11-22T07:35:40.484Z"
+last_updated: "2026-11-22T18:13:37.173Z"
 last_activity: 2026-11-22
-last_activity_desc: "Completed quick task 261122-ehx: Fit BPMN pools and expanded subprocesses"
-state_head: 9562f3a580402aea9bb8ac49eb373479c904ed00
+last_activity_desc: "Completed quick task 261122-tcx: Update BPMN Forge test coverage"
+state_head: d29d4a80d672973f8f007db0b171af16940a5e4d
 ---
 
 # Project State
@@ -17,7 +17,7 @@ See [.planning/PROJECT.md](PROJECT.md) for the baseline established on 2026-11-2
 
 **Current focus:** Project baseline established. Milestone planning is deferred.
 
-Last activity: 2026-11-22 - Completed quick task 261122-ehx: Fit BPMN pools and expanded subprocesses
+Last activity: 2026-11-22 - Completed quick task 261122-tcx: Update BPMN Forge test coverage
 
 ### Quick Tasks Completed
 
@@ -32,3 +32,4 @@ Last activity: 2026-11-22 - Completed quick task 261122-ehx: Fit BPMN pools and 
 | 261122-dgo | Move linked text annotations during BPMN alignment | 2026-11-22 | e1e81f8 | [261122-dgo-move-linked-text-annotations-during-bpmn](./quick/261122-dgo-move-linked-text-annotations-during-bpmn/) |
 | 261122-dz8 | Refine timer branches and gateway labels | 2026-11-22 | 9f39e33 | [261122-dz8-refine-timer-branches-and-gateway-labels](./quick/261122-dz8-refine-timer-branches-and-gateway-labels/) |
 | 261122-ehx | Fit BPMN pools and expanded subprocesses | 2026-11-22 | 9562f3a | [261122-ehx-fit-bpmn-pools-and-expanded-subprocesses](./quick/261122-ehx-fit-bpmn-pools-and-expanded-subprocesses/) |
+| 261122-tcx | Update BPMN Forge test coverage | 2026-11-22 | d29d4a8 | [261122-tcx-update-bpmn-forge-test-coverage](./quick/261122-tcx-update-bpmn-forge-test-coverage/) |
