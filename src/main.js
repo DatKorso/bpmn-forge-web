@@ -7,9 +7,11 @@ import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css';
 import 'bpmn-js-color-picker/colors/color-picker.css';
 import autoAlign from './auto-align.js';
 import { clearAlignmentStatus, reportAlignment, reportOperation, reportOperationError, resetAlignment } from './footer.js';
+import keyboardPalette from './keyboard-palette.js';
 import { protectConditionalFlows, renderProperties } from './properties.js';
 import russian from './russian.js';
 import { reportGapValidity, updateToolTooltip } from './toolbar.js';
+import { fitDiagram, zoomDiagram } from './viewport.js';
 import './style.css';
 
 const EMPTY_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -113,12 +115,13 @@ async function loadDiagram(readXML, nextFilename, message, operation = 'new') {
   let next;
   try {
     // Keep the live model and its history until the new XML has rendered successfully.
-    next = new Modeler({ container: host, additionalModules: [autoAlign, russian, colorPicker] });
+    next = new Modeler({ container: host, additionalModules: [autoAlign, russian, colorPicker, keyboardPalette] });
     protectConditionalFlows(next);
     keepFractionalBounds(next);
     const { warnings } = await next.importXML(await readXML());
     const canvas = next.get('canvas');
-    if (canvas.getRootElement().children.length) canvas.zoom('fit-viewport');
+    canvas.resized();
+    if (canvas.getRootElement().children.length) fitDiagram(canvas);
     next.on('commandStack.changed', () => {
       if (modeler !== next) return;
       updateDirtyState();
@@ -228,6 +231,11 @@ byId('download').addEventListener('click', async (event) => {
   await downloadDiagram();
   if (document.activeElement === document.body) button.focus();
 });
+
+for (const [id, factor] of [['zoom-out', 1 / 1.25], ['zoom-in', 1.25]]) {
+  byId(id).addEventListener('click', () => zoomDiagram(modeler.get('canvas'), factor));
+}
+byId('zoom-fit').addEventListener('click', () => fitDiagram(modeler.get('canvas')));
 
 function validateRequiredGap(input) {
   const value = input.valueAsNumber;

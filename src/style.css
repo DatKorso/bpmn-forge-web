@@ -97,7 +97,7 @@ body {
 
 button, input, textarea { font: inherit; }
 
-:where(.toolbar, .header, .properties, .footer, .footer-dialog) :is(button, input:not([type="checkbox"]), textarea) {
+:where(.toolbar, .header, .properties, .footer, .footer-dialog, .viewport-controls) :is(button, input:not([type="checkbox"]), textarea) {
   min-height: var(--control-size);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
@@ -112,12 +112,12 @@ button, input, textarea { font: inherit; }
   cursor: pointer;
 }
 
-:where(.toolbar, .header, .properties, .footer, .footer-dialog) button:hover:not(:disabled, [aria-disabled="true"]) {
+:where(.toolbar, .header, .properties, .footer, .footer-dialog, .viewport-controls) button:hover:not(:disabled, [aria-disabled="true"]) {
   background: var(--hover);
   border-color: var(--hover-line);
 }
 
-:where(.toolbar, .header, .properties, .footer, .footer-dialog, .diagram) :focus-visible {
+:where(.toolbar, .header, .properties, .footer, .footer-dialog, #workspace, .operation-alert) :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
@@ -215,12 +215,8 @@ button, input, textarea { font: inherit; }
   position: relative;
   display: flex;
   flex: 1;
-  gap: var(--space-md);
   min-height: 360px;
   margin: var(--space-md) var(--space-lg) 0;
-}
-
-#workspace, .properties {
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
@@ -231,9 +227,11 @@ button, input, textarea { font: inherit; }
 .properties {
   display: flex;
   flex-direction: column;
-  flex: 0 0 290px;
+  flex: 0 0 260px;
   min-width: 0;
   min-height: 0;
+  border-inline-start: 1px solid var(--line);
+  background: var(--surface);
 }
 .panel-header {
   display: flex;
@@ -324,6 +322,15 @@ button, input, textarea { font: inherit; }
   font-size: 25px;
 }
 .diagram .djs-palette .entry:hover { background: var(--hover); }
+.diagram .djs-palette :focus-visible { outline-offset: -2px; }
+.diagram .djs-palette .djs-palette-toggle {
+  height: 24px;
+  line-height: 24px;
+  font-size: 18px;
+}
+.diagram .djs-palette.two-column.open .djs-palette-toggle { display: block; width: 100%; }
+.diagram .djs-palette-toggle::before { content: '▸'; }
+.diagram .djs-palette.open .djs-palette-toggle::before { content: '▴'; }
 .diagram .djs-context-pad .entry { border-radius: var(--radius-control); color: var(--control-text); }
 .diagram .djs-popup-search input { min-height: var(--control-size); }
 .diagram .djs-popup-search input:focus-visible { outline: 2px solid var(--focus); }
@@ -343,6 +350,43 @@ button, input, textarea { font: inherit; }
 }
 
 .empty strong { color: var(--control-text); font-size: var(--text-empty-title); letter-spacing: -.025em; }
+#workspace:has(.placement-marker:not([hidden])) .empty { visibility: hidden; }
+.placement-marker {
+  position: absolute;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--surface);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.placement-hint {
+  position: absolute;
+  z-index: 1;
+  top: var(--space-sm);
+  left: calc(2 * var(--palette-control-size) + 2 * var(--space-md));
+  right: var(--space-sm);
+  width: fit-content;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--control-text);
+  font-size: var(--text-small);
+  pointer-events: none;
+}
+.placement-hint:empty { padding: 0; border: 0; }
+.viewport-controls {
+  position: absolute;
+  right: calc(68px + var(--space-md)); /* Allow room for the bpmn.io attribution. */
+  bottom: var(--space-md);
+  z-index: 1;
+  display: flex;
+  gap: var(--space-xs);
+}
+.viewport-controls button { cursor: pointer; }
 .footer {
   display: flex;
   align-items: center;
@@ -482,6 +526,8 @@ button.icon-button {
     z-index: 2;
     inset: 0 0 0 auto;
     width: min(290px, calc(100% - 44px));
+    border: 1px solid var(--line);
+    border-radius: var(--radius-panel);
     box-shadow: var(--shadow-raised);
   }
 }
