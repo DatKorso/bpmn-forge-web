@@ -1,0 +1,82 @@
+{
+  "boxes": {
+    "Call": {
+      "x": 70,
+      "y": 170,
+      "width": 100,
+      "height": 80
+    },
+    "Collapsed": {
+      "x": 230,
+      "y": 170,
+      "width": 100,
+      "height": 80
+    },
+    "Transaction": {
+      "x": 430,
+      "y": 95,
+      "width": 260,
+      "height": 230
+    },
+    "Inside": {
+      "x": 510,
+      "y": 175,
+      "width": 100,
+      "height": 80
+    },
+    "EventSub": {
+      "x": 100,
+      "y": 390,
+      "width": 240,
+      "height": 200
+    },
+    "Timer": {
+      "x": 202,
+      "y": 472,
+      "width": 36,
+      "height": 36
+    },
+    "DataRef": {
+      "x": 30,
+      "y": 305,
+      "width": 36,
+      "height": 50
+    },
+    "Store": {
+      "x": 400,
+      "y": 430,
+      "width": 50,
+      "height": 50
+    },
+    "Group": {
+      "x": 60,
+      "y": 60,
+      "width": 700,
+      "height": 280
+    }
+  },
+  "routes": {
+    "Next": [
+      {
+        "x": 170,
+        "y": 210
+      },
+      {
+        "x": 230,
+        "y": 210
+      }
+    ],
+    "Commit": [
+      {
+        "x": 330,
+        "y": 210
+      },
+      {
+        "x": 430,
+        "y": 210
+      }
+    ]
+  },
+  "skipped": [],
+  "reason": null
+}

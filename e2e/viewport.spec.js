@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
-const fixture = fileURLToPath(new URL('./fixtures/tight-pool.bpmn', import.meta.url));
+const fixture = fileURLToPath(new URL('../test/fixtures/tight-pool.bpmn', import.meta.url));
 const workspace = (page) => page.locator('#workspace');
 const palette = (page) => page.getByRole('toolbar', { name: 'Палитра BPMN' });
 const taskTool = (page) => palette(page).getByRole('button', { name: 'Создать задачу', exact: true });

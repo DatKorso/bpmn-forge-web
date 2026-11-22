@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
-const fixture = fileURLToPath(new URL('./fixtures/tight-pool.bpmn', import.meta.url));
-const loopFixture = fileURLToPath(new URL('./fixtures/compact-loop.bpmn', import.meta.url));
+const fixture = fileURLToPath(new URL('../test/fixtures/tight-pool.bpmn', import.meta.url));
+const loopFixture = fileURLToPath(new URL('../test/fixtures/compact-loop.bpmn', import.meta.url));
 
 async function openDiagram(page, path, filename) {
   const [chooser] = await Promise.all([

@@ -1,0 +1,100 @@
+{
+  "boxes": {
+    "Pool": {
+      "x": 40,
+      "y": 40,
+      "width": 380,
+      "height": 280
+    },
+    "Intake": {
+      "x": 70,
+      "y": 40,
+      "width": 350,
+      "height": 150
+    },
+    "Resolution": {
+      "x": 70,
+      "y": 190,
+      "width": 350,
+      "height": 130
+    },
+    "Start": {
+      "x": 112,
+      "y": 102,
+      "width": 36,
+      "height": 36
+    },
+    "Review": {
+      "x": 190,
+      "y": 85,
+      "width": 100,
+      "height": 70
+    },
+    "Timeout": {
+      "x": 247,
+      "y": 137,
+      "width": 36,
+      "height": 36
+    },
+    "Decision": {
+      "x": 214.5,
+      "y": 224.5,
+      "width": 51,
+      "height": 51
+    },
+    "End": {
+      "x": 332,
+      "y": 232,
+      "width": 36,
+      "height": 36
+    }
+  },
+  "routes": {
+    "StartToReview": [
+      {
+        "x": 148,
+        "y": 120
+      },
+      {
+        "x": 190,
+        "y": 120
+      }
+    ],
+    "ReviewToDecision": [
+      {
+        "x": 240,
+        "y": 155
+      },
+      {
+        "x": 240,
+        "y": 224.5
+      }
+    ],
+    "DecisionToEnd": [
+      {
+        "x": 265.5,
+        "y": 250
+      },
+      {
+        "x": 332,
+        "y": 250
+      }
+    ],
+    "TimeoutToEnd": [
+      {
+        "x": 283,
+        "y": 155
+      },
+      {
+        "x": 350,
+        "y": 155
+      },
+      {
+        "x": 350,
+        "y": 232
+      }
+    ]
+  },
+  "skipped": [],
+  "reason": null
+}

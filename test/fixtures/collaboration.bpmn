@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="Definitions" targetNamespace="https://example.org/bpmn">
+  <bpmn:collaboration id="Collab">
+    <bpmn:participant id="Sender" processRef="Process" />
+    <bpmn:participant id="Receiver" processRef="ReceiverProcess" />
+    <bpmn:messageFlow id="Delivery" sourceRef="Send" targetRef="Receive" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process" isExecutable="false">
+    <bpmn:task id="Prepare" />
+    <bpmn:sendTask id="Send" />
+    <bpmn:sequenceFlow id="Ready" sourceRef="Prepare" targetRef="Send" />
+  </bpmn:process>
+  <bpmn:process id="ReceiverProcess">
+    <bpmn:receiveTask id="Receive" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="Received" sourceRef="Receive" targetRef="End" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="Collab">
+      <bpmndi:BPMNShape id="Sender_di" bpmnElement="Sender" isHorizontal="true">
+        <dc:Bounds x="40" y="45" width="450" height="260" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Receiver_di" bpmnElement="Receiver" isHorizontal="true">
+        <dc:Bounds x="100" y="430" width="420" height="250" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Prepare_di" bpmnElement="Prepare">
+        <dc:Bounds x="120" y="95" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Send_di" bpmnElement="Send">
+        <dc:Bounds x="329" y="183" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Receive_di" bpmnElement="Receive">
+        <dc:Bounds x="190" y="500" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_di" bpmnElement="End">
+        <dc:Bounds x="415" y="590" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Ready_di" bpmnElement="Ready">
+        <di:waypoint x="220" y="135" />
+        <di:waypoint x="272" y="135" />
+        <di:waypoint x="272" y="223" />
+        <di:waypoint x="329" y="223" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Received_di" bpmnElement="Received">
+        <di:waypoint x="290" y="540" />
+        <di:waypoint x="355" y="540" />
+        <di:waypoint x="355" y="608" />
+        <di:waypoint x="415" y="608" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Delivery_di" bpmnElement="Delivery">
+        <di:waypoint x="379" y="263" />
+        <di:waypoint x="379" y="375" />
+        <di:waypoint x="240" y="375" />
+        <di:waypoint x="240" y="500" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="Definitions" targetNamespace="https://example.org/bpmn">
+  <bpmn:process id="Process" isExecutable="false">
+    <bpmn:task id="Work" />
+    <bpmn:task id="Next" />
+    <bpmn:textAnnotation id="Note"><bpmn:text>Check the reference</bpmn:text></bpmn:textAnnotation>
+    <bpmn:association id="Comment" sourceRef="Work" targetRef="Note" />
+    <bpmn:sequenceFlow id="Continue" sourceRef="Work" targetRef="Next" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="Process">
+      <bpmndi:BPMNShape id="Work_di" bpmnElement="Work">
+        <dc:Bounds x="90" y="100" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Next_di" bpmnElement="Next">
+        <dc:Bounds x="280" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Note_di" bpmnElement="Note">
+        <dc:Bounds x="110" y="20" width="120" height="45" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Comment_di" bpmnElement="Comment">
+        <di:waypoint x="140" y="100" />
+        <di:waypoint x="140" y="65" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Continue_di" bpmnElement="Continue">
+        <di:waypoint x="190" y="140" />
+        <di:waypoint x="235" y="140" />
+        <di:waypoint x="235" y="240" />
+        <di:waypoint x="280" y="240" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="Definitions" targetNamespace="https://example.org/bpmn">
+  <bpmn:process id="Process" isExecutable="false">
+    <bpmn:startEvent id="Start" />
+    <bpmn:task id="Work" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="Begin" sourceRef="Start" targetRef="Work" />
+    <bpmn:sequenceFlow id="Finish" sourceRef="Work" targetRef="End" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="Process">
+      <bpmndi:BPMNShape id="Start_di" bpmnElement="Start">
+        <dc:Bounds x="40" y="90" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Work_di" bpmnElement="Work">
+        <dc:Bounds x="178" y="133" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_di" bpmnElement="End">
+        <dc:Bounds x="320" y="110" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Begin_di" bpmnElement="Begin">
+        <di:waypoint x="76" y="108" />
+        <di:waypoint x="125" y="108" />
+        <di:waypoint x="125" y="173" />
+        <di:waypoint x="178" y="173" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Finish_di" bpmnElement="Finish">
+        <di:waypoint x="278" y="173" />
+        <di:waypoint x="300" y="173" />
+        <di:waypoint x="300" y="128" />
+        <di:waypoint x="320" y="128" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

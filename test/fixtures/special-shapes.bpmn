@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="Definitions" targetNamespace="https://example.org/bpmn">
+  <bpmn:process id="Process" isExecutable="false">
+    <bpmn:callActivity id="Call" />
+    <bpmn:subProcess id="Collapsed" />
+    <bpmn:transaction id="Transaction">
+      <bpmn:task id="Inside" />
+    </bpmn:transaction>
+    <bpmn:subProcess id="EventSub" triggeredByEvent="true">
+      <bpmn:startEvent id="Timer"><bpmn:timerEventDefinition /></bpmn:startEvent>
+    </bpmn:subProcess>
+    <bpmn:dataObject id="Data" />
+    <bpmn:dataObjectReference id="DataRef" dataObjectRef="Data" />
+    <bpmn:dataStoreReference id="Store" />
+    <bpmn:group id="Group" />
+    <bpmn:sequenceFlow id="Next" sourceRef="Call" targetRef="Collapsed" />
+    <bpmn:sequenceFlow id="Commit" sourceRef="Collapsed" targetRef="Transaction" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="Process">
+      <bpmndi:BPMNShape id="Call_di" bpmnElement="Call">
+        <dc:Bounds x="70" y="100" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Collapsed_di" bpmnElement="Collapsed" isExpanded="false">
+        <dc:Bounds x="230" y="172" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Transaction_di" bpmnElement="Transaction" isExpanded="true">
+        <dc:Bounds x="430" y="100" width="260" height="230" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Inside_di" bpmnElement="Inside">
+        <dc:Bounds x="505" y="181" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EventSub_di" bpmnElement="EventSub" isExpanded="true">
+        <dc:Bounds x="100" y="385" width="240" height="200" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Timer_di" bpmnElement="Timer">
+        <dc:Bounds x="202" y="470" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DataRef_di" bpmnElement="DataRef">
+        <dc:Bounds x="30" y="305" width="36" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Store_di" bpmnElement="Store">
+        <dc:Bounds x="400" y="430" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Group_di" bpmnElement="Group">
+        <dc:Bounds x="60" y="60" width="700" height="280" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Next_di" bpmnElement="Next">
+        <di:waypoint x="170" y="140" />
+        <di:waypoint x="200" y="140" />
+        <di:waypoint x="200" y="212" />
+        <di:waypoint x="230" y="212" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Commit_di" bpmnElement="Commit">
+        <di:waypoint x="330" y="212" />
+        <di:waypoint x="430" y="212" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

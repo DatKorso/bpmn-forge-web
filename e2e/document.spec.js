@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
-const fixture = fileURLToPath(new URL('./fixtures/tight-pool.bpmn', import.meta.url));
+const fixture = fileURLToPath(new URL('../test/fixtures/tight-pool.bpmn', import.meta.url));
 const invalidFile = { name: 'invalid.bpmn', mimeType: 'application/xml', buffer: Buffer.from('<invalid/>') };
 const dirty = (page) => page.locator('#unsaved-changes');
 const confirmation = (page) => page.locator('#confirm-replace');
