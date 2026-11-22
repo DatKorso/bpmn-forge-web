@@ -1,6 +1,7 @@
 import { is } from 'bpmn-js/lib/util/ModelUtil';
 import { isExpanded } from 'bpmn-js/lib/util/DiUtil';
 import { getLabel } from 'bpmn-js/lib/util/LabelUtil';
+import { revealSelection } from './viewport.js';
 
 const byId = (id) => document.getElementById(id);
 const panel = byId('properties');
@@ -23,9 +24,11 @@ const rows = new Map();
 
 function syncPanel() {
   const visible = open[mode()];
+  const opening = visible && panel.hidden;
   if (!visible && panel.contains(document.activeElement)) toggle.focus();
   panel.hidden = !visible;
   toggle.setAttribute('aria-expanded', String(visible));
+  if (opening) revealSelection(modeler);
 }
 
 function togglePanel(visible) {

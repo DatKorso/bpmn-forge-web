@@ -1,4 +1,4 @@
-const GRID = 10;
+export const GRID = 10;
 const TOLERANCE = 20;
 const EPSILON = 1e-7;
 
