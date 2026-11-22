@@ -75,7 +75,8 @@ export function preferSpacing(candidate, base, best) {
     compareCosts(spacingCost(candidate), spacingCost(best)) < 0;
 }
 
-function improveSingleNodeBranches(best, { units, diagram, scope, frame, toLocal, toWorld, spacing, obstacles, lanes, evaluate }) {
+function improveSingleNodeBranches(best, context) {
+  const { units, diagram, scope, frame, toLocal, toWorld, minimums: spacing, obstaclesInScope, lanes } = context;
   const incoming = diagram.incoming;
   const outgoing = diagram.outgoing;
   const byFigure = new Map(units.map((unit) => [unit.figure, unit]));
@@ -131,8 +132,8 @@ function improveSingleNodeBranches(best, { units, diagram, scope, frame, toLocal
 
     const moved = clone(plan);
     moveTree(moved, diagram, figure, toWorld({ x: 0, y: dy + offset }));
-    if (scopeCollisions(moved, plan, [...new Set([...obstacles, ...parts])], lanes, scope)) continue;
-    const tested = evaluate({ ...best, plan: moved });
+    if (scopeCollisions(moved, plan, [...new Set([...obstaclesInScope, ...parts])], lanes, scope)) continue;
+    const tested = evaluateCandidate({ ...best, plan: moved }, context);
     if (!tested || tested.cost.slice(0, 3).some((value, index) => value > best.cost[index]) ||
         bends(tested.plan, entry) + bends(tested.plan, exit) >= bends(plan, entry) + bends(plan, exit) ||
         incoming.get(exit.target).some((edge) => bends(plan, edge) === 0 && bends(tested.plan, edge) > 0)) continue;
@@ -388,10 +389,8 @@ function applyMaxSpacing(best, context, compact) {
 }
 
 function finalizeScope(best, context, measureExcess) {
-  const { units, diagram, scope, frame, toLocal, toWorld, minimums, obstaclesInScope, lanes,
-    state, gaps, flip, members } = context;
-  best = improveSingleNodeBranches(best, { units, diagram, scope, frame, toLocal, toWorld, spacing: minimums,
-    obstacles: obstaclesInScope, lanes, evaluate: (candidate) => evaluateCandidate(candidate, context) });
+  const { units, diagram, scope, lanes, state, gaps, flip, members } = context;
+  best = improveSingleNodeBranches(best, context);
 
   const oldScope = state.boxes.get(scope);
   if (oldScope && scope.kind !== 'pool' && !sameBox(oldScope, best.plan.boxes.get(scope))) {

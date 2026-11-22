@@ -5,6 +5,7 @@ import { byId, right, bottom, transpose, descendantOf, contains, validBox, moveT
 
 export const CONTAINER_INSET = 40;
 
+// Coordinates are in the direction of the process, with the header on the left.
 export function usableArea(container, frame, forNodes = true) {
   const inset = forNodes && container.kind !== 'lane' ? CONTAINER_INSET : 0;
   const trailing = forNodes ? Math.max(inset, ROUTE_MARGIN) : 0;

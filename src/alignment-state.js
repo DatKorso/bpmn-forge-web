@@ -26,8 +26,6 @@ export function contains(outer, inner) {
   return inner.x >= outer.x && inner.y >= outer.y && right(inner) <= right(outer) && bottom(inner) <= bottom(outer);
 }
 
-// Coordinates are in the direction of the process, with the header on the left.
-
 export function validBox(rect) {
   return [rect.x, rect.y, right(rect), bottom(rect)].every((value) =>
     Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER);
