@@ -90,8 +90,8 @@ document.addEventListener('keydown', (event) => {
   dismissToolTooltip();
 }, true);
 
-export function reportGapValidity() {
-  const invalid = gapSettings.querySelector('input:invalid');
+export function reportGapValidity(selector = 'input:invalid') {
+  const invalid = gapSettings.querySelector(selector);
   if (!invalid) return true;
   dismissToolTooltip();
   showGapSettings(true);

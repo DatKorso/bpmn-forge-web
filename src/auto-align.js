@@ -3,7 +3,7 @@ import {
   collectLanes, getLabelAdjustment, getLanesRoot, isDirectionHorizontal,
   isExpanded, isHorizontal, LANE_INDENTATION, updateBounds
 } from './bpmn-internals.js';
-import { alignmentSelection, planAlignment, planSelection } from './alignment-plan.js';
+import { alignmentSelection } from './alignment-selection.js';
 import { isFrame } from './annotation-layout.js';
 import { placeGatewayLabel } from './gateway-label-layout.js';
 import { translate, translateWaypoints } from './layout.js';
@@ -15,7 +15,12 @@ const SKIP_REASONS = {
   collisions: 'не удалось разместить фигуры без наложений в своих областях',
   poolStability: 'расстановка пулов пропущена: не достигнуто устойчивое положение',
   poolRouting: 'расстановка пулов пропущена: не удалось разместить пулы и провести потоки сообщений',
-  routing: 'не удалось провести все стрелки в обход фигур'
+  routing: 'не удалось провести все стрелки в обход фигур',
+  graphCollaboration: 'Экспериментальная раскладка пока не поддерживает несколько участников и потоки сообщений',
+  graphGroup: 'Экспериментальная раскладка пока не поддерживает группы',
+  graphNestedLanes: 'Экспериментальная раскладка пока не поддерживает вложенные дорожки',
+  graphMissingLane: 'В пуле с дорожками каждый узел должен принадлежать дорожке',
+  graphIncomplete: 'Экспериментальная раскладка не смогла сопоставить все элементы модели и схемы'
 };
 
 const SKIP_HINTS = {
@@ -24,7 +29,12 @@ const SKIP_HINTS = {
   collisions: 'Разнесите пересекающиеся фигуры или уменьшите минимальные отступы.',
   poolStability: 'Разнесите перекрывающиеся пулы и повторите выравнивание.',
   poolRouting: 'Освободите место между пулами для потоков сообщений.',
-  routing: 'Освободите проход между фигурами или увеличьте отступы.'
+  routing: 'Освободите проход между фигурами или увеличьте отступы.',
+  graphCollaboration: 'Для этой схемы доступна кнопка «Выровнять схему».',
+  graphGroup: 'Для этой схемы доступна кнопка «Выровнять схему».',
+  graphNestedLanes: 'Для этой схемы доступна кнопка «Выровнять схему».',
+  graphMissingLane: 'Проверьте принадлежность фигур дорожкам.',
+  graphIncomplete: 'Проверьте, что все узлы и потоки отображаются на схеме.'
 };
 
 function getBounds({ x, y, width, height }) {
@@ -115,35 +125,44 @@ function sameWaypoints(a, b) {
 
 function gatewayLabelBounds(groups) {
   const bounds = new Map();
-  for (const { diagram, gateways } of groups) {
+  for (const { diagram, gateways, stabilize } of groups) {
     if (!gateways.length) continue;
     const { figures } = diagram;
     const connections = figures.flatMap(({ element }) => element.outgoing.filter((edge) => !edge.hidden));
     const paths = connections.map(({ waypoints }) => waypoints);
     const labels = [...figures.map(({ element }) => element), ...connections]
       .flatMap(({ labels }) => labels.filter((label) => !label.hidden));
-    for (const gateway of gateways.toSorted((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
-      const visible = gateway.element.labels.filter((label) => !label.hidden);
-      if (!visible.length) continue;
-      const containers = new Set();
-      for (let figure = gateway; figure; figure = figure.parent) {
-        if (isFrame(figure)) containers.add(figure);
-        for (let lane = figure.lane; lane?.kind === 'lane'; lane = lane.parent) containers.add(lane);
+    const ordered = stabilize ? gateways : gateways.toSorted((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    // A later label can free space for a label that could not move on the first pass.
+    for (let pass = 0; pass < (stabilize ? labels.length : 1); pass++) {
+      let changed = false;
+      for (const gateway of ordered) {
+        const visible = gateway.element.labels.filter((label) => !label.hidden);
+        if (!visible.length) continue;
+        const containers = new Set();
+        for (let figure = gateway; figure; figure = figure.parent) {
+          if (isFrame(figure)) containers.add(figure);
+          for (let lane = figure.lane; lane?.kind === 'lane'; lane = lane.parent) containers.add(lane);
+        }
+        const obstacles = figures.filter((figure) => figure !== gateway && figure.kind !== 'group')
+          .flatMap((figure) => {
+            const box = getBounds(figure.element);
+            if (!containers.has(figure)) return [box];
+            if (!figure.header) return [];
+            return [figure.horizontal === false ? { ...box, height: figure.header } : { ...box, width: figure.header }];
+          });
+        for (const label of visible) {
+          const before = bounds.get(label) ?? getBounds(label);
+          const after = placeGatewayLabel(before, getBounds(gateway.element), [
+            ...obstacles, ...labels.filter((other) => other !== label).map((other) => bounds.get(other) ?? getBounds(other))
+          ], paths, [...containers].map(({ element }) => getBounds(element)));
+          if (after !== before) {
+            bounds.set(label, after);
+            changed = true;
+          }
+        }
       }
-      const obstacles = figures.filter((figure) => figure !== gateway && figure.kind !== 'group')
-        .flatMap((figure) => {
-          const box = getBounds(figure.element);
-          if (!containers.has(figure)) return [box];
-          if (!figure.header) return [];
-          return [figure.horizontal === false ? { ...box, height: figure.header } : { ...box, width: figure.header }];
-        });
-      for (const label of visible) {
-        const before = getBounds(label);
-        const after = placeGatewayLabel(before, getBounds(gateway.element), [
-          ...obstacles, ...labels.filter((other) => other !== label).map((other) => bounds.get(other) ?? getBounds(other))
-        ], paths, [...containers].map(({ element }) => getBounds(element)));
-        if (after !== before) bounds.set(label, after);
-      }
+      if (!changed) break;
     }
   }
   return bounds;
@@ -264,9 +283,10 @@ class AutoAlign {
     };
   }
 
-  planSelection(elements, gaps) {
+  async planSelection(elements, gaps) {
     const selection = this.selection(elements);
     if (selection.reason) return selection;
+    const { planSelection } = await import('./alignment-plan.js');
     const plan = planSelection(selection.diagram, selection, gaps);
     if (plan.reason) return { reason: SKIP_REASONS[plan.reason] };
 
@@ -324,7 +344,35 @@ class AutoAlign {
     return this.prepareCommand(bounds, routes, [], [{ diagram: selection.diagram, gateways: plan.labelGateways }], result);
   }
 
-  planDiagram(gaps) {
+  diagramSnapshots() {
+    return [...this.shapesByRoot()].map(([root, shapes]) => snapshot(root, shapes, this.elementRegistry));
+  }
+
+  async planDiagram(gaps) {
+    const diagrams = this.diagramSnapshots();
+    const { planAlignment } = await import('./alignment-plan.js');
+    function* plans() {
+      for (const diagram of diagrams) yield { diagram, plan: planAlignment(diagram, gaps) };
+    }
+    return this.prepareDiagramPlans(plans());
+  }
+
+  async planGraphDiagram(gaps) {
+    const diagrams = this.diagramSnapshots();
+    const { planGraphLayout } = await import('./graph-layout/index.js');
+    const plans = [];
+    for (const diagram of diagrams) {
+      const plan = await planGraphLayout(diagram, gaps);
+      if (plan.reason) {
+        const scope = plan.scope ?? diagram.root;
+        return { reason: `${regionName(scope)} — ${SKIP_REASONS[plan.reason]}. ${SKIP_HINTS[plan.reason]}` };
+      }
+      plans.push({ diagram, plan });
+    }
+    return this.prepareDiagramPlans(plans, true);
+  }
+
+  prepareDiagramPlans(plans, graph = false) {
     const bounds = new Map();
     const routes = new Map();
     const relayout = new Set();
@@ -334,11 +382,9 @@ class AutoAlign {
     let resized = 0;
     let movedPools = 0;
 
-    for (const [root, shapes] of this.shapesByRoot()) {
-      const diagram = snapshot(root, shapes, this.elementRegistry);
-      const plan = planAlignment(diagram, gaps);
+    for (const { diagram, plan } of plans) {
       if (plan.reason) return { reason: SKIP_REASONS[plan.reason] };
-      labelGroups.push({ diagram, gateways: plan.labelGateways });
+      labelGroups.push({ diagram, gateways: plan.labelGateways, stabilize: graph });
       for (const [{ element, box, kind }, next] of plan.boxes) {
         bounds.set(element, next);
         const delta = { x: next.x - box.x, y: next.y - box.y };

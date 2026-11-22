@@ -126,6 +126,10 @@
           <button id="align" class="primary" type="button" aria-keyshortcuts="Alt+Enter" aria-describedby="alignment-scope" disabled>Выровнять схему</button>
           <span id="alignment-scope" hidden>Выравнивает всю схему, включая пулы и потоки сообщений. Alt+Enter.</span>
         </span>
+        <span class="tool">
+          <button id="align-graph" type="button" aria-label="Перестроить по графу" aria-describedby="graph-alignment-scope" disabled>Перестроить по графу <span class="beta-badge" aria-hidden="true">β</span></button>
+          <span id="graph-alignment-scope" hidden>Строит раскладку заново по связям процесса, не учитывая текущее расположение. Поддерживает один процесс или пул с дорожками и подпроцессами. Максимальные отступы не учитываются.</span>
+        </span>
       </form>
     </section>
     <div id="operation-alerts"></div>

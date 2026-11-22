@@ -37,6 +37,7 @@ const uniformGap = byId('uniform-gap');
 const rangeGapSettings = byId('gap-range');
 const uniformGapSettings = byId('gap-uniform');
 const align = byId('align');
+const alignGraph = byId('align-graph');
 const alignSelection = byId('align-selection');
 const selectionReason = byId('selection-reason');
 const documentName = byId('document-name');
@@ -75,7 +76,7 @@ function updateControls() {
 
   for (const id of ['new', 'open']) byId(id).disabled = busy;
   byId('download').disabled = busy || !modeler;
-  align.disabled = busy || empty;
+  align.disabled = alignGraph.disabled = busy || empty;
   byId('undo').disabled = busy || !stack?.canUndo();
   byId('redo').disabled = busy || !stack?.canRedo();
   const reason = aligning ? 'Дождитесь завершения выравнивания.' : busy || !modeler
@@ -338,6 +339,11 @@ function checkGaps() {
   return reportGapValidity();
 }
 
+function checkMinimumGaps() {
+  validateGaps();
+  return reportGapValidity('input[required]:invalid');
+}
+
 function alignmentGaps() {
   if (useUniformGap.checked) {
     const gap = uniformGap.valueAsNumber;
@@ -380,7 +386,9 @@ function revealSkippedRegion({ element, kind }) {
 }
 
 async function alignDiagram(button, trigger) {
-  if (busy || !modeler || button.disabled || button.getAttribute('aria-disabled') === 'true' || !checkGaps()) return;
+  const graph = button === alignGraph;
+  if (busy || !modeler || button.disabled || button.getAttribute('aria-disabled') === 'true' ||
+      !(graph ? checkMinimumGaps() : checkGaps())) return;
   const selected = button === alignSelection;
   const selection = selected ? modeler.get('selection').get() : null;
   const gaps = alignmentGaps();
@@ -397,8 +405,14 @@ async function alignDiagram(button, trigger) {
     // Let Chromium paint the pending state before synchronous planning.
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const autoAlign = current.get('autoAlign');
-    const plan = selected ? autoAlign.planSelection(selection, gaps) : autoAlign.planDiagram(gaps);
+    const planning = graph ? autoAlign.planGraphDiagram({ x: gaps.x, y: gaps.y }) :
+      selected ? autoAlign.planSelection(selection, gaps) : autoAlign.planDiagram(gaps);
+    const plan = await planning;
     setAlignmentPending(false);
+    if (current !== modeler || action !== currentAction()) {
+      reportAlignment({ reason: 'Схема изменилась. Запустите выравнивание ещё раз.' });
+      return;
+    }
     if (plan.apply) {
       const confirmed = confirmAlignment(plan);
       previewOpened = true;
@@ -424,7 +438,7 @@ async function alignDiagram(button, trigger) {
   }
 }
 
-for (const button of [align, alignSelection]) {
+for (const button of [align, alignSelection, alignGraph]) {
   button.addEventListener('click', () => alignDiagram(button, button));
 }
 

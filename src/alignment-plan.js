@@ -6,7 +6,8 @@ import { planScope } from './scope-plan.js';
 import { preserveCompactLoops } from './compact-loops.js';
 import { finishAnnotations } from './finish-annotations.js';
 
-export { alignmentSelection, planSelection } from './selection-plan.js';
+export { alignmentSelection } from './alignment-selection.js';
+export { planSelection } from './selection-plan.js';
 
 export function planAlignment({ root, figures, edges, messageFlows = [], auxiliary = [] }, gaps) {
   const diagram = indexDiagram(figures, edges, auxiliary);

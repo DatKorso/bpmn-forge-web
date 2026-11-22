@@ -1,43 +1,12 @@
 import { boundsOf, intersects, layoutProcess, translate } from './layout.js';
 import { routeCost } from './route-flows.js';
 import { collaboration, placePools, routeMessages } from './pool-layout.js';
-import { isFrame, obstructedFlows } from './annotation-layout.js';
+import { obstructedFlows } from './annotation-layout.js';
 import { byId, right, bottom, sameBox, transpose, localSpacing, descendantOf, contains, validBox, clone, moveTree, attachments, indexDiagram, changes, offsets } from './alignment-state.js';
 import { usableArea, geometryWithLabels, containsCenter, resize, memberLane } from './container-fit.js';
 import { hasClearance, respectsGaps, spacingLayouts, preferSpacing, planScope } from './scope-plan.js';
 import { fixedRoutes } from './fixed-routes.js';
 import { finishAnnotations } from './finish-annotations.js';
-
-export function alignmentSelection(diagram, elements) {
-  const byElement = new Map(diagram.figures.map((figure) => [figure.element, figure]));
-  const selected = [...new Set(elements.map((element) => element.labelTarget ?? element))];
-  const figures = selected.map((element) => byElement.get(element));
-  if (!figures.length) return { reason: 'Выберите пул, дорожку, раскрытый подпроцесс или несколько фигур.' };
-  const pools = figures.filter((figure) => figure?.kind === 'pool');
-  if (pools.length && pools.length !== figures.length) {
-    return { reason: 'Выберите только пулы или фигуры одного процесса' };
-  }
-  if (pools.length > 1) return { pools: new Set(pools) };
-  if (figures.some((figure) => !figure)) return { reason: 'Выделение должно состоять из фигур.' };
-  if (figures.some((figure) => figure.host && !figures.includes(figure.host))) {
-    return { reason: 'Выберите фигуру, к которой прикреплено граничное событие.' };
-  }
-
-  const members = figures.filter((figure) => !figure.host);
-  const [first] = members;
-  if (members.length === 1 && isFrame(first)) {
-    const scope = first.kind === 'lane' ? first.scope : first;
-    const contents = diagram.figures.filter((figure) => figure.kind === 'node' && figure.scope === scope &&
-      (first.kind !== 'lane' || figure.lane && (figure.lane === first || descendantOf(figure.lane, first))));
-    return contents.length ? { scope, members: contents, container: first } : { reason: 'В выбранной области нет фигур для выравнивания.' };
-  }
-  if (members.some(isFrame)) return { reason: 'Выберите один контейнер или несколько отдельных фигур.' };
-  if (members.length < 2) return { reason: 'Выберите хотя бы две фигуры.' };
-  if (members.some((figure) => figure.scope !== first.scope)) {
-    return { reason: 'Фигуры должны принадлежать одному процессу или подпроцессу.' };
-  }
-  return { scope: first.scope, members };
-}
 
 function unitsOverlap(units, boxes) {
   return units.some(({ parts }, index) => units.slice(index + 1).some((other) =>
