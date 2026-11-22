@@ -121,6 +121,39 @@ test('aligns an imported BPMN, restores it through undo and redo, and preserves 
   expect(await readDiagram(page, await downloadDiagram(page))).toEqual(aligned);
 });
 
+test('moves a task and resizes a pool after applying alignment bounds', async ({ page }) => {
+  await page.goto('/');
+  await openDiagram(page, fixture, 'tight-pool.bpmn');
+  await page.getByRole('button', { name: 'Выровнять схему' }).click();
+  await expect(page.locator('#alignment-summary')).toHaveText('Выравнивание выполнено');
+  const snapshot = async () => readDiagram(page, await downloadDiagram(page));
+  const aligned = await snapshot();
+
+  async function drag(locator, dx, dy) {
+    const { x, y, width, height } = await locator.boundingBox();
+    await page.mouse.move(x + width / 2, y + height / 2);
+    await page.mouse.down();
+    await page.mouse.move(x + width / 2 + dx, y + height / 2 + dy, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  await drag(page.locator('[data-element-id="Review"] .djs-visual'), 25, 0);
+  const moved = await snapshot();
+  expect(moved.shapes.Review.x).toBeGreaterThan(aligned.shapes.Review.x);
+  expect(moved.shapes.Timeout.x - aligned.shapes.Timeout.x)
+    .toBe(moved.shapes.Review.x - aligned.shapes.Review.x);
+
+  const pool = await page.locator('[data-element-id="Pool"] .djs-visual').boundingBox();
+  await page.mouse.click(pool.x + 12, pool.y + pool.height / 2);
+  const handle = page.locator('.djs-resizer-Pool.djs-resizer-e');
+  await expect(handle).toBeVisible();
+  await drag(handle, 50, 0);
+  const resized = await snapshot();
+  expect(resized.shapes.Pool.width).toBeGreaterThan(moved.shapes.Pool.width);
+  expect(resized.lanes).toEqual(aligned.lanes);
+  expect(resized.flows).toEqual(aligned.flows);
+});
+
 test('preserves a compact gateway loop through alignment, history, and reopening', async ({ page }, testInfo) => {
   const align = page.getByRole('button', { name: 'Выровнять схему' });
   const undo = page.getByRole('button', { name: 'Отменить', exact: true });

@@ -24,3 +24,7 @@ Use the relevant source and its closest test first. Consult `.planning/quick/` o
 ## Verification
 
 Run targeted Node tests for planner changes. For editor workflows, build first with `npm run build`, then run `npm run test:e2e -- e2e/<spec>.spec.js` with the matching spec. Playwright serves `dist/` via Vite preview. Use the full suites for changes that span multiple workflows.
+
+## Updating bpmn-js
+
+Keep version-sensitive imports and methods in `src/bpmn-internals.js`. After changing the pinned dependency and lockfile, run `npm ci`, `npm test` (including the adapter signature test), `npm run build` and `npm run test:e2e`. Check the alignment spec for manual edits after alignment, unchanged BPMN relations, undo and redo, and export/reopen. Check the document spec for download checkpoint behavior.

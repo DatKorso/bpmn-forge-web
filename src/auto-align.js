@@ -1,8 +1,8 @@
 import { getDi, is } from 'bpmn-js/lib/util/ModelUtil';
-import { isExpanded, isHorizontal } from 'bpmn-js/lib/util/DiUtil';
-import { collectLanes, getLanesRoot, LANE_INDENTATION } from 'bpmn-js/lib/features/modeling/util/LaneUtil';
-import { getLabelAdjustment } from 'bpmn-js/lib/features/modeling/behavior/util/LabelLayoutUtil';
-import { isDirectionHorizontal } from 'bpmn-js/lib/features/modeling/util/ModelingUtil';
+import {
+  collectLanes, getLabelAdjustment, getLanesRoot, isDirectionHorizontal,
+  isExpanded, isHorizontal, LANE_INDENTATION, updateBounds
+} from './bpmn-internals.js';
 import { alignmentSelection, planAlignment, planSelection } from './alignment-plan.js';
 import { isFrame } from './annotation-layout.js';
 import { placeGatewayLabel } from './gateway-label-layout.js';
@@ -146,7 +146,7 @@ class AlignCommand {
   setBounds(bounds) {
     for (const [element, box] of bounds) {
       Object.assign(element, box);
-      this.bpmnUpdater.updateBounds(element);
+      updateBounds(this.bpmnUpdater, element);
     }
     return [...bounds.keys()];
   }

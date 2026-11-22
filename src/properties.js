@@ -1,5 +1,5 @@
 import { is } from 'bpmn-js/lib/util/ModelUtil';
-import { isExpanded } from 'bpmn-js/lib/util/DiUtil';
+import { isExpanded } from './bpmn-internals.js';
 import { getLabel } from 'bpmn-js/lib/util/LabelUtil';
 import { revealSelection } from './viewport.js';
 

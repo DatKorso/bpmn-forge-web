@@ -6,6 +6,7 @@ import 'bpmn-js/dist/assets/bpmn-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css';
 import 'bpmn-js-color-picker/colors/color-picker.css';
 import autoAlign from './auto-align.js';
+import { getUndoAction } from './bpmn-internals.js';
 import { clearAlignmentStatus, reportAlignment, reportOperation, reportOperationError, resetAlignment } from './footer.js';
 import keyboardPalette from './keyboard-palette.js';
 import { protectConditionalFlows, renderProperties } from './properties.js';
@@ -51,8 +52,7 @@ function warnBeforeUnload(event) {
 }
 
 function currentAction() {
-  // The pinned diagram-js stack retains action identity across undo and redo.
-  return modeler?.get('commandStack')._getUndoAction();
+  return getUndoAction(modeler?.get('commandStack'));
 }
 
 function updateDirtyState() {
