@@ -71,6 +71,7 @@ test('preserves mouse placement, rejects an invalid keyboard target, and undoes 
   await page.goto('/');
   await expect(page.locator('#empty')).toBeVisible();
   await taskTool(page).click();
+  await expect(page.locator('#empty-open')).toBeHidden();
   const bounds = await workspace(page).boundingBox();
   const paletteBounds = await palette(page).boundingBox();
   await page.mouse.click((paletteBounds.x + paletteBounds.width + bounds.x + bounds.width) / 2, bounds.y + bounds.height / 2 - 24);
@@ -165,6 +166,17 @@ for (const [width, height] of [[1024, 600], [1280, 800], [1440, 900]]) {
       const content = panel.locator('.properties-content');
       expect(await content.evaluate((node) => node.scrollHeight > node.clientHeight && node.scrollTop > 0)).toBe(true);
     }
+    const zoomIn = page.getByRole('button', { name: 'Увеличить', exact: true });
+    for (let i = 0; i < 3; i++) await zoomIn.click();
+    const beforeAlignment = await end.boundingBox();
+    await page.getByRole('button', { name: 'Выровнять схему' }).click();
+    const summary = page.locator('#alignment-summary');
+    await expect(summary).toHaveText('Выравнивание выполнено');
+    await expect(summary).toBeInViewport({ ratio: 1 });
+    expect(await summary.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    expect((await end.boundingBox()).width).toBeCloseTo(beforeAlignment.width);
+    await fit(page).click();
+    await expectPoolFits(page);
     await page.screenshot({ path: testInfo.outputPath(`viewport-${width}x${height}.png`) });
   });
 }

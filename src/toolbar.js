@@ -1,7 +1,6 @@
 const tooltip = document.getElementById('tool-tooltip');
 const gapToggle = document.getElementById('toggle-gaps');
 const gapSettings = document.getElementById('gap-settings');
-const alignment = document.getElementById('alignment');
 let hoveredTool;
 let focusedTool;
 
@@ -70,6 +69,10 @@ function showGapSettings(visible) {
 
 gapToggle.addEventListener('click', () => showGapSettings(gapSettings.hidden));
 
+document.addEventListener('focusin', (event) => {
+  if (!gapSettings.hidden && event.target !== gapToggle && !gapSettings.contains(event.target)) showGapSettings(false);
+});
+
 document.addEventListener('click', (event) => {
   if (gapSettings.hidden || gapSettings.contains(event.target) || gapToggle.contains(event.target)) return;
   if (gapSettings.contains(document.activeElement)) gapToggle.focus();
@@ -89,10 +92,9 @@ document.addEventListener('keydown', (event) => {
 
 export function reportGapValidity() {
   const invalid = gapSettings.querySelector('input:invalid');
-  if (invalid) {
-    dismissToolTooltip();
-    showGapSettings(true);
-    invalid.focus();
-  }
-  return alignment.reportValidity();
+  if (!invalid) return true;
+  dismissToolTooltip();
+  showGapSettings(true);
+  invalid.focus();
+  return false;
 }
