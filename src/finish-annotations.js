@@ -66,7 +66,7 @@ function shiftLane(diagram, state, lane, delta) {
 export function finishAnnotations(diagram, planned, initial, messageFlows, gaps, selection) {
   const { notes } = diagram;
   if (!notes.annotations.length && !notes.associations.length) return planned;
-  const state = clone(planned);
+  let state = planned;
   const explicit = new Set(selection?.members?.filter(isAnnotation));
   for (const note of notes.annotations) {
     if (diagram.followers.has(note) && notes.containers.get(note).some((frame) => selection?.owned?.(frame))) {
@@ -104,7 +104,8 @@ export function finishAnnotations(diagram, planned, initial, messageFlows, gaps,
       return placed;
     }
     if (blocked.fixed || attempt === notes.annotations.length) return null;
-    const before = clone(state);
+    const before = state;
+    state = clone(state);
     if (!growAnnotationArea(diagram, state, blocked, gaps, selection)) return null;
     const collab = collaboration(notes.figures, messageFlows, diagram.followers);
     const overlaps = collab.pools.some((pool, index) => collab.pools.slice(index + 1).some((other) =>

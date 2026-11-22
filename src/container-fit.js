@@ -283,9 +283,11 @@ export function scopeCollisions(state, original, members, lanes, scope, fitted) 
 
   for (let index = 0; index < members.length; index++) {
     const a = members[index];
-    for (const b of members.slice(index + 1)) {
+    const box = state.boxes.get(a);
+    for (let next = index + 1; next < members.length; next++) {
+      const b = members[next];
       if (a.host === b || b.host === a || a.host && a.host === b.host) continue;
-      if (intersects(state.boxes.get(a), state.boxes.get(b)) &&
+      if (intersects(box, state.boxes.get(b)) &&
           (a.kind === 'node' || b.kind === 'node' || a.host || b.host)) return true;
     }
   }

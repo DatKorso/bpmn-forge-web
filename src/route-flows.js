@@ -100,13 +100,51 @@ export function cutsInterior(a, b, rect) {
   return Math.max(0, Math.min(...x), Math.min(...y)) < Math.min(1, Math.max(...x), Math.max(...y));
 }
 
+// Reuse the obstacle bounds across routes in a candidate. Prefix maxima let
+// the search stop even when a large frame overlaps several smaller shapes.
+function obstacleIndex(obstacles) {
+  const ordered = obstacles.toSorted((a, b) => a.x - b.x);
+  let far = -Infinity;
+  const ends = ordered.map((rect) => (far = Math.max(far, right(rect))));
+  const cache = new Map();
+  return (a, b) => {
+    const minX = Math.min(a.x, b.x);
+    const maxX = Math.max(a.x, b.x);
+    const minY = Math.min(a.y, b.y);
+    const maxY = Math.max(a.y, b.y);
+    const axisAligned = a.x === b.x || a.y === b.y;
+    const key = axisAligned && `${minX},${maxX},${minY},${maxY}`;
+    if (key && cache.has(key)) return cache.get(key);
+    let low = 0;
+    let high = ordered.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (ordered[mid].x < maxX) low = mid + 1;
+      else high = mid;
+    }
+    let blocked = false;
+    for (let index = low - 1; index >= 0 && ends[index] > minX; index--) {
+      const rect = ordered[index];
+      if (rect.y < maxY && bottom(rect) > minY && cutsInterior(a, b, rect)) {
+        blocked = true;
+        break;
+      }
+    }
+    if (key) {
+      if (cache.size >= 8192) cache.clear();
+      cache.set(key, blocked);
+    }
+    return blocked;
+  };
+}
+
 export function translatedRouteIsClear(points, { source, target }, bounds, obstacles) {
   const others = obstacles.filter((rect) => rect !== source && rect !== target);
   return points.length >= 2 && points.every((point) => inside(point, bounds)) &&
     segments(points).every(([a, b]) => !others.some((rect) => cutsInterior(a, b, rect)));
 }
 
-function getPorts(rect, bounds, obstacles, projection) {
+function getPorts(rect, bounds, blocked, projection) {
   const x = rect.x + rect.width / 2;
   const y = rect.y + rect.height / 2;
   const ports = [
@@ -127,7 +165,7 @@ function getPorts(rect, bounds, obstacles, projection) {
     if (!inside(anchor, bounds)) return [];
     for (const margin of [ROUTE_MARGIN, 1]) {
       const exit = { x: anchor.x + dx * margin, y: anchor.y + dy * margin };
-      if (inside(exit, bounds) && !obstacles.some((rect) => cutsInterior(anchor, exit, rect))) {
+      if (inside(exit, bounds) && !blocked(anchor, exit)) {
         return [[anchor, exit, dx ? 0 : 1]];
       }
     }
@@ -188,11 +226,15 @@ function addCost(a, b) {
 }
 
 export function routeFlow(flow, bounds, obstacles, occupied = []) {
+  return findRoute(flow, bounds, obstacles, occupied, obstacleIndex(obstacles));
+}
+
+function findRoute(flow, bounds, obstacles, occupied, blocked) {
   const { passage, frames = [], startPhase = 0, sourceProjection, targetProjection } = flow;
   const advance = passage ?? ((phase) => phase);
   const { source, target } = flow;
-  const starts = getPorts(source, bounds, obstacles, sourceProjection);
-  const ends = getPorts(target, bounds, obstacles, targetProjection);
+  const starts = getPorts(source, bounds, blocked, sourceProjection);
+  const ends = getPorts(target, bounds, blocked, targetProjection);
   if (!starts.length || !ends.length) return null;
 
   const progressAxis = flow.vertical ? 'y' : 'x';
@@ -208,7 +250,7 @@ export function routeFlow(flow, bounds, obstacles, occupied = []) {
   const emptyCost = [0, 0, 0, 0, 0];
   let winner;
   function consider(points) {
-    if (points.length > (passage ? 4 : 3) || !acceptsRoute(points, flow, bounds, obstacles)) return;
+    if (points.length > (passage ? 4 : 3) || !routeIsClear(points, flow, bounds, blocked)) return;
     const path = segments(points);
     if (passage && path.reduce((phase, [a, b]) => phase < 0 ? phase : advance(phase, a, b), startPhase) < 0) return;
     const score = path.reduce((cost, [a, b], index) =>
@@ -319,7 +361,7 @@ export function routeFlow(flow, bounds, obstacles, occupied = []) {
         const nj = j + dj;
         if (ni < 0 || ni >= xs.length || nj < 0 || nj >= ys.length) continue;
         const next = { x: xs[ni], y: ys[nj] };
-        if (!obstacles.some((rect) => cutsInterior(point, next, rect))) {
+        if (!blocked(point, next)) {
           adjacent.push({ i: ni, j: nj, point: next, direction: di ? 0 : 1 });
         }
       }
@@ -339,14 +381,15 @@ export function routeFlow(flow, bounds, obstacles, occupied = []) {
 export function routeFlows(flows, bounds, obstacles, fixed = []) {
   const routes = new Map();
   const occupied = fixed.flatMap((points) => segments(simplifyRoute(points)));
-  const straight = new Set(flows.filter((flow) => !flow.back && hasStraightRoute(flow, bounds, obstacles)));
+  const blocked = obstacleIndex(obstacles);
+  const straight = new Set(flows.filter((flow) => !flow.back && hasStraightRoute(flow, bounds, blocked)));
   // Reserve clear straight paths before off-row branches can occupy their ports.
   const ordered = [...flows].sort((a, b) => Number(!!a.back) - Number(!!b.back) ||
     Number(straight.has(b)) - Number(straight.has(a)) ||
     Number(!!b.isDefault) - Number(!!a.isDefault) || (a.id < b.id ? -1 : 1));
 
   for (const flow of ordered) {
-    const route = routeFlow(flow, bounds, obstacles, occupied);
+    const route = findRoute(flow, bounds, obstacles, occupied, blocked);
     if (!route) return null;
     routes.set(flow.id, route);
     occupied.push(...segments(route));
@@ -354,19 +397,19 @@ export function routeFlows(flows, bounds, obstacles, fixed = []) {
   return routes;
 }
 
-function hasStraightRoute(flow, bounds, obstacles) {
+function hasStraightRoute(flow, bounds, blocked) {
   const { source, target } = flow;
   const from = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
   const to = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
   if (from.y === to.y) {
     const [a, b] = from.x < to.x ? [right(source), target.x] : [source.x, right(target)];
     return (b - a) * (to.x - from.x) > 0 &&
-      acceptsRoute([{ x: a, y: from.y }, { x: b, y: to.y }], flow, bounds, obstacles);
+      routeIsClear([{ x: a, y: from.y }, { x: b, y: to.y }], flow, bounds, blocked);
   }
   if (from.x === to.x) {
     const [a, b] = from.y < to.y ? [bottom(source), target.y] : [source.y, bottom(target)];
     return (b - a) * (to.y - from.y) > 0 &&
-      acceptsRoute([{ x: from.x, y: a }, { x: to.x, y: b }], flow, bounds, obstacles);
+      routeIsClear([{ x: from.x, y: a }, { x: to.x, y: b }], flow, bounds, blocked);
   }
   return false;
 }
@@ -376,12 +419,16 @@ function onBoundary(point, rect) {
     (point.x === rect.x || point.x === right(rect) || point.y === rect.y || point.y === bottom(rect));
 }
 
-export function acceptsRoute(points, { source, target }, bounds, obstacles) {
+export function acceptsRoute(points, flow, bounds, obstacles) {
+  return routeIsClear(points, flow, bounds, (a, b) => obstacles.some((rect) => cutsInterior(a, b, rect)));
+}
+
+function routeIsClear(points, { source, target }, bounds, blocked) {
   if (!points || points.length < 2 || !onBoundary(points[0], source) || !onBoundary(points.at(-1), target)) {
     return false;
   }
   if (source === target && length(points[0], points.at(-1)) < EPSILON) return false;
   return points.every((point) => inside(point, bounds)) &&
     segments(points).every(([a, b]) => (a.x === b.x || a.y === b.y) &&
-      !obstacles.some((rect) => cutsInterior(a, b, rect)));
+      !blocked(a, b));
 }
