@@ -58,7 +58,7 @@ function components(nodes, outgoing) {
   return groups;
 }
 
-export function orderGraph(nodes, edges, dataEdges) {
+export function orderGraph(nodes, edges, dataEdges, laneRank = () => 0) {
   const graph = edges.filter(({ source, target }) => source !== target);
   const outgoing = Map.groupBy(graph, ({ source }) => source);
   for (const flows of outgoing.values()) flows.sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
@@ -91,7 +91,8 @@ export function orderGraph(nodes, edges, dataEdges) {
   const keys = new Map(nodes.map((node, index) => [node, index]));
   const preferred = new Set();
   while (ready.length) {
-    ready.sort((a, b) => Number(preferred.has(b)) - Number(preferred.has(a)) || keys.get(a) - keys.get(b));
+    ready.sort((a, b) => Number(preferred.has(b)) - Number(preferred.has(a)) ||
+      laneRank(a) - laneRank(b) || keys.get(a) - keys.get(b));
     const node = ready.shift();
     ordered.push(node);
     for (const { target, isDefault } of successors.get(node) ?? []) {

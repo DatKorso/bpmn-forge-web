@@ -117,6 +117,17 @@ test('chooses DFS back edges only inside SCCs and produces a topological order',
   assert.ok(dag.every(({ source, target }) => ordered.indexOf(source) < ordered.indexOf(target)));
 });
 
+test('keeps the default branch continuation forward across lanes in a cycle', async () => {
+  const diagram = await readFixture('graph-layout/cycle-across-lanes.bpmn');
+  const stages = [];
+  const plan = await planGraphLayout(diagram, graphGaps, stages);
+  verify(diagram, plan, stages);
+  const flows = stages.flatMap(({ flows }) => flows);
+  assert.deepEqual(flows.filter(({ back }) => back).map(({ edge }) => edge.id), ['BA']);
+  const { source, target } = flows.find(({ edge }) => edge.id === 'AB');
+  assert.ok(source.x + source.width <= target.x);
+});
+
 test('keeps the acyclic graph forward and directs every data edge to a sink', async () => {
   for (const name of ['acyclic-reorder', 'shared-data']) {
     const diagram = await readFixture(`${name}.bpmn`);

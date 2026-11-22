@@ -143,7 +143,7 @@ export async function arrangeScope(scope, diagram, state, gaps, diagnostics, ver
   const dataEdges = contacts.map(([source, target], index) => ({ source, target, id: `d${keyAt(index)}` }));
   const laneRanks = new Map(lanes.map((lane, index) => [lane, index]));
   const laneRank = (figure) => laneRanks.get(units.get(figure).lane) ?? lanes.length;
-  const graph = orderGraph([...units.keys()].toSorted((a, b) => laneRank(a) - laneRank(b)), flows, dataEdges);
+  const graph = orderGraph([...units.keys()], flows, dataEdges, laneRank);
   const elk = await layoutElk(graph, units, spacing, vertical);
   const geometry = new Map(elk.children?.map(({ id, ...box }) => [id, toLocal(box)]));
   const { positioned, laneBoxes, frame } = packRows(units, lanes, geometry, scope.header ?? 0, spacing, scope.expanded, vertical);

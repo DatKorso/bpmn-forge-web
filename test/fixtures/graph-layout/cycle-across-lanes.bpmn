@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions" targetNamespace="https://example.org/bpmn">
+  <bpmn:collaboration id="Collaboration">
+    <bpmn:participant id="Pool" processRef="Process" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process" isExecutable="false">
+    <bpmn:laneSet id="Lanes">
+      <bpmn:lane id="Upper">
+        <bpmn:flowNodeRef>Split</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>B</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lower">
+        <bpmn:flowNodeRef>A</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:exclusiveGateway id="Split" default="SplitToA" />
+    <bpmn:task id="A" />
+    <bpmn:task id="B" />
+    <bpmn:sequenceFlow id="SplitToA" sourceRef="Split" targetRef="A" />
+    <bpmn:sequenceFlow id="SplitToB" sourceRef="Split" targetRef="B" />
+    <bpmn:sequenceFlow id="AB" sourceRef="A" targetRef="B" />
+    <bpmn:sequenceFlow id="BA" sourceRef="B" targetRef="A" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="Collaboration">
+      <bpmndi:BPMNShape id="Pool_di" bpmnElement="Pool" isHorizontal="true">
+        <dc:Bounds x="40" y="40" width="470" height="260" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Upper_di" bpmnElement="Upper" isHorizontal="true">
+        <dc:Bounds x="70" y="40" width="440" height="130" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lower_di" bpmnElement="Lower" isHorizontal="true">
+        <dc:Bounds x="70" y="170" width="440" height="130" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Split_di" bpmnElement="Split" isMarkerVisible="true">
+        <dc:Bounds x="120" y="80" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="A_di" bpmnElement="A">
+        <dc:Bounds x="230" y="195" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="B_di" bpmnElement="B">
+        <dc:Bounds x="370" y="65" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="SplitToA_di" bpmnElement="SplitToA">
+        <di:waypoint x="145" y="130" />
+        <di:waypoint x="145" y="235" />
+        <di:waypoint x="230" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SplitToB_di" bpmnElement="SplitToB">
+        <di:waypoint x="170" y="105" />
+        <di:waypoint x="370" y="105" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="AB_di" bpmnElement="AB">
+        <di:waypoint x="330" y="235" />
+        <di:waypoint x="400" y="235" />
+        <di:waypoint x="400" y="145" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BA_di" bpmnElement="BA">
+        <di:waypoint x="440" y="145" />
+        <di:waypoint x="440" y="185" />
+        <di:waypoint x="280" y="185" />
+        <di:waypoint x="280" y="195" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
