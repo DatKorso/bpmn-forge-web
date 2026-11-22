@@ -1,10 +1,10 @@
 ---
 gsd_state_version: "1.0"
 status: unknown
-last_updated: "2026-11-22T23:42:39.126Z"
+last_updated: "2026-11-22T23:56:52.871Z"
 last_activity: 2026-11-23
-last_activity_desc: "Completed quick task 261123-3h0: Establish ELK layout quality baseline and optimize routing"
-state_head: 15266f2986f3e62fc179593f16c67da55000f0a0
+last_activity_desc: "Completed quick task 261123-41j: Preserve graph cycle direction across lanes"
+state_head: aabd0ee8783cdf666af213e98b5db0a0b673c163
 ---
 
 # Project State
@@ -17,7 +17,7 @@ See [.planning/PROJECT.md](PROJECT.md) for the baseline established on 2026-11-2
 
 **Current focus:** Project baseline established. Milestone planning is deferred.
 
-Last activity: 2026-11-23 - Completed quick task 261123-3h0: Establish ELK layout quality baseline and optimize routing
+Last activity: 2026-11-23 - Completed quick task 261123-41j: Preserve graph cycle direction across lanes
 
 ### Quick Tasks Completed
 
@@ -38,3 +38,4 @@ Last activity: 2026-11-23 - Completed quick task 261123-3h0: Establish ELK layou
 | 261122-x9p | Harden and refactor BPMN auto alignment | 2026-11-22 | 17ad386 | [261122-x9p-harden-and-refactor-bpmn-auto-alignment](./quick/261122-x9p-harden-and-refactor-bpmn-auto-alignment/) |
 | 261123-2iv | Add experimental BPMN graph layout | 2026-11-22 | 126ed30 | [261123-2iv-graph-layout-prototype](./quick/261123-2iv-graph-layout-prototype/) |
 | 261123-3h0 | Establish ELK layout quality baseline and optimize routing | 2026-11-22 | 15266f2 | [261123-3h0-establish-elk-layout-quality-baseline-an](./quick/261123-3h0-establish-elk-layout-quality-baseline-an/) |
+| 261123-41j | Preserve graph cycle direction across lanes | 2026-11-22 | aabd0ee | [261123-41j-preserve-graph-cycle-direction-across-la](./quick/261123-41j-preserve-graph-cycle-direction-across-la/) |
