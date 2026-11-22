@@ -19,7 +19,7 @@ Use the relevant source and its closest test first. Consult `.planning/quick/` o
 ## Document and controls
 
 - `src/main.js` stages imports before replacing the live model and tracks the download checkpoint by command identity. Preserve the live diagram and history on failure. Check undo, redo and a new history branch in `e2e/document.spec.js`.
-- Use `src/toolbar.js` for preview confirmation and `src/footer.js` for progress and skipped-region reports. Plan first, then apply the prepared command after confirmation. Keep cancellation free of model changes, restore keyboard focus after closing the preview, and use the same path for both alignment shortcuts. Use `src/keyboard-palette.js` and `src/viewport.js` for keyboard placement and canvas navigation. Check focus and the affected path in `e2e/alignment.spec.js` or `e2e/viewport.spec.js`.
+- Use `src/toolbar.js` for preview confirmation and `src/footer.js` for progress and skipped-region reports. Plan first, then apply the prepared command after confirmation. Keep cancellation free of model changes. After closing the preview, re-enable the controls and explicitly restore focus to the initiating element because the browser may have remembered a different element while that control was disabled. Use the same path for both alignment shortcuts. Use `src/keyboard-palette.js` and `src/viewport.js` for keyboard placement and canvas navigation. Check focus and the affected path in `e2e/alignment.spec.js` or `e2e/viewport.spec.js`.
 
 ## Verification
 

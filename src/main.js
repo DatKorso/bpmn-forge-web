@@ -392,13 +392,18 @@ async function alignDiagram(button, trigger) {
   setAlignmentPending(true);
   updateControls();
 
+  let previewOpened = false;
   try {
     // Let Chromium paint the pending state before synchronous planning.
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const autoAlign = current.get('autoAlign');
     const plan = selected ? autoAlign.planSelection(selection, gaps) : autoAlign.planDiagram(gaps);
     setAlignmentPending(false);
-    if (plan.apply && !await confirmAlignment(plan)) return;
+    if (plan.apply) {
+      const confirmed = confirmAlignment(plan);
+      previewOpened = true;
+      if (!await confirmed) return;
+    }
     if (current !== modeler || action !== currentAction()) {
       reportAlignment({ reason: 'Схема изменилась. Запустите выравнивание ещё раз.' });
       return;
@@ -412,7 +417,10 @@ async function alignDiagram(button, trigger) {
     busy = aligning = false;
     setAlignmentPending(false);
     updateControls();
-    if (document.activeElement === document.body) (trigger === document.body ? button : trigger).focus();
+    if (previewOpened || document.activeElement === document.body) {
+      const focusTarget = trigger.isConnected && trigger !== document.body ? trigger : button;
+      focusTarget.focus({ preventScroll: true });
+    }
   }
 }
 

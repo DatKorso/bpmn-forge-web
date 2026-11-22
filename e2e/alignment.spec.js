@@ -305,6 +305,8 @@ test('previews alignment from the keyboard, restores focus on cancel, and rememb
         observer.disconnect();
         resolve(document.getElementById('align').disabled &&
           document.getElementById('workspace').getAttribute('aria-busy') === 'true');
+        // Simulate focus moving while the launch button is disabled and before the dialog opens.
+        document.getElementById('show-messages').focus();
       });
       observer.observe(progress, { attributes: true, attributeFilter: ['hidden'] });
     });
