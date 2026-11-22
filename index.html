@@ -15,6 +15,7 @@
         <rect x="20" y="19" width="6" height="6" rx="1.5" />
       </svg>
       <h1 id="document-name" class="document-name" title="Новая схема">Новая схема</h1>
+      <span id="unsaved-changes" class="unsaved-changes" role="status"></span>
       <span class="tool">
         <button id="toggle-properties" class="tool-button" type="button" aria-label="Свойства"
             aria-expanded="false" aria-controls="properties">
@@ -89,6 +90,7 @@
         </span>
       </form>
     </section>
+    <div id="operation-alerts"></div>
 
     <main class="editor">
       <section id="workspace" aria-label="Полотно схемы" aria-busy="true">
@@ -175,7 +177,20 @@
         <section aria-labelledby="operation-title">
           <h3 id="operation-title">Действия со схемой</h3>
           <p id="operation-message"></p>
+          <ul id="operation-errors" hidden></ul>
         </section>
+      </div>
+    </dialog>
+
+    <dialog id="confirm-replace" class="footer-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+      <header><h2 id="confirm-title"></h2></header>
+      <div class="dialog-content">
+        <p id="confirm-description">В текущей схеме есть несохранённые изменения.</p>
+        <form method="dialog" class="confirm-actions">
+          <button value="download">Скачать BPMN и продолжить</button>
+          <button value="discard">Продолжить без скачивания</button>
+          <button value="cancel" autofocus>Отмена</button>
+        </form>
       </div>
     </dialog>
 

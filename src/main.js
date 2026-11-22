@@ -6,7 +6,7 @@ import 'bpmn-js/dist/assets/bpmn-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css';
 import 'bpmn-js-color-picker/colors/color-picker.css';
 import autoAlign from './auto-align.js';
-import { clearAlignmentStatus, reportAlignment, reportOperation, resetAlignment } from './footer.js';
+import { clearAlignmentStatus, reportAlignment, reportOperation, reportOperationError, resetAlignment } from './footer.js';
 import { protectConditionalFlows, renderProperties } from './properties.js';
 import russian from './russian.js';
 import { reportGapValidity, updateToolTooltip } from './toolbar.js';
@@ -40,6 +40,27 @@ const propertiesFields = byId('properties-fields');
 let modeler;
 let busy = false;
 let filename = 'Новая схема.bpmn';
+let savedAction;
+let dirty = false;
+
+function warnBeforeUnload(event) {
+  event.preventDefault();
+  event.returnValue = true;
+}
+
+function currentAction() {
+  // The pinned diagram-js stack retains action identity across undo and redo.
+  return modeler?.get('commandStack')._getUndoAction();
+}
+
+function updateDirtyState() {
+  const changed = currentAction() !== savedAction;
+  if (changed === dirty) return;
+  dirty = changed;
+  byId('unsaved-changes').textContent = dirty ? 'Есть несохранённые изменения' : '';
+  if (dirty) window.addEventListener('beforeunload', warnBeforeUnload);
+  else window.removeEventListener('beforeunload', warnBeforeUnload);
+}
 
 function updateControls() {
   const stack = modeler?.get('commandStack');
@@ -81,7 +102,7 @@ function keepFractionalBounds(modeler) {
   });
 }
 
-async function loadDiagram(readXML, nextFilename, message) {
+async function loadDiagram(readXML, nextFilename, message, operation = 'new') {
   if (busy) return;
   busy = true;
   updateControls();
@@ -99,7 +120,9 @@ async function loadDiagram(readXML, nextFilename, message) {
     const canvas = next.get('canvas');
     if (canvas.getRootElement().children.length) canvas.zoom('fit-viewport');
     next.on('commandStack.changed', () => {
-      if (modeler === next) clearAlignmentStatus();
+      if (modeler !== next) return;
+      updateDirtyState();
+      clearAlignmentStatus();
     });
     next.on(['commandStack.changed', 'root.set', 'selection.changed'], () => {
       if (modeler === next) updateControls();
@@ -110,16 +133,20 @@ async function loadDiagram(readXML, nextFilename, message) {
     oldHost?.remove();
 
     modeler = next;
+    savedAction = currentAction();
+    updateDirtyState();
     host.classList.remove('staging');
     filename = nextFilename;
     documentName.textContent = nextFilename.replace(/\.bpmn$/i, '');
     documentName.title = nextFilename;
     resetAlignment();
-    reportOperation(warnings.length ? `${message} Предупреждения импорта: ${warnings.length}.` : message);
+    reportOperation(warnings.length ? `${message} Предупреждения импорта: ${warnings.length}.` : message, operation);
   } catch (error) {
     next?.destroy();
     host.remove();
-    reportOperation('Не удалось открыть BPMN. Проверьте формат файла.', true);
+    reportOperationError(operation, operation === 'import'
+      ? 'Не удалось открыть BPMN. Проверьте формат файла.'
+      : 'Не удалось создать пустую схему.');
     console.error(error);
   } finally {
     busy = false;
@@ -127,14 +154,35 @@ async function loadDiagram(readXML, nextFilename, message) {
   }
 }
 
-byId('new').addEventListener('click', () => loadDiagram(
-  () => EMPTY_XML, 'Новая схема.bpmn', 'Создана пустая схема.'
-));
+const confirmation = byId('confirm-replace');
+let pendingReplacement;
+
+function replaceDiagram(title, trigger, load) {
+  modeler?.get('directEditing').complete();
+  if (!dirty) return load();
+
+  pendingReplacement = { trigger, load };
+  byId('confirm-title').textContent = title;
+  confirmation.returnValue = 'cancel';
+  confirmation.showModal();
+}
+
+confirmation.addEventListener('close', async () => {
+  const { trigger, load } = pendingReplacement;
+  pendingReplacement = undefined;
+  const action = confirmation.returnValue;
+  if (action === 'discard' || (action === 'download' && await downloadDiagram())) await load();
+  trigger.focus();
+});
+
+byId('new').addEventListener('click', () => replaceDiagram('Создать схему', byId('new'), () =>
+  loadDiagram(() => EMPTY_XML, 'Новая схема.bpmn', 'Создана пустая схема.')));
 byId('open').addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => {
   const [file] = fileInput.files;
   fileInput.value = '';
-  if (file) loadDiagram(() => file.text(), file.name, 'Файл открыт.');
+  if (file) replaceDiagram('Открыть BPMN', byId('open'), () =>
+    loadDiagram(() => file.text(), file.name, 'Файл открыт.', 'import'));
 });
 
 byId('undo').addEventListener('click', () => {
@@ -146,22 +194,39 @@ byId('redo').addEventListener('click', () => {
   reportOperation('Действие повторено.');
 });
 
-byId('download').addEventListener('click', async () => {
-  const currentModeler = modeler;
+async function downloadDiagram() {
+  if (busy || !modeler) return false;
+  modeler.get('directEditing').complete();
+  busy = true;
+  updateControls();
   const outputName = filename.replace(/\.(bpmn|xml)$/i, '') + '.bpmn';
+  let url;
   try {
-    const { xml } = await currentModeler.saveXML({ format: true });
-    const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml;charset=utf-8' }));
+    const { xml } = await modeler.saveXML({ format: true });
+    url = URL.createObjectURL(new Blob([xml], { type: 'application/xml;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
     link.download = outputName;
     link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    if (currentModeler === modeler) reportOperation('Файл BPMN скачан.');
+    savedAction = currentAction();
+    updateDirtyState();
+    reportOperation('Файл BPMN скачан.', 'export');
+    return true;
   } catch (error) {
-    if (currentModeler === modeler) reportOperation('Не удалось сохранить файл BPMN.', true);
+    reportOperationError('export', 'Не удалось сохранить файл BPMN.');
     console.error(error);
+    return false;
+  } finally {
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+    busy = false;
+    updateControls();
   }
+}
+
+byId('download').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  await downloadDiagram();
+  if (document.activeElement === document.body) button.focus();
 });
 
 function validateRequiredGap(input) {

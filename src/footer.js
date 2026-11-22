@@ -37,11 +37,44 @@ function announce(message, attention) {
   if (attention && !messages.open) setUnread(true);
 }
 
-export function reportOperation(message, error = false) {
-  const operation = byId('operation-message');
-  operation.textContent = message;
-  operation.classList.toggle('error', error);
-  announce(message, error);
+const operationErrors = byId('operation-errors');
+const errors = new Map();
+
+export function reportOperation(message, operation) {
+  const previous = errors.get(operation);
+  previous?.alert.remove();
+  previous?.entry.remove();
+  errors.delete(operation);
+  operationErrors.hidden = !errors.size;
+  byId('operation-message').textContent = message;
+  announce(message);
+}
+
+export function reportOperationError(operation, message) {
+  reportOperation('', operation);
+  const entry = document.createElement('li');
+  entry.className = 'error';
+  entry.textContent = message;
+  operationErrors.append(entry);
+  operationErrors.hidden = false;
+
+  const alert = document.createElement('div');
+  alert.className = 'operation-alert';
+  const text = document.createElement('span');
+  text.setAttribute('role', 'alert');
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.textContent = 'Закрыть';
+  dismiss.setAttribute('aria-label', `Закрыть сообщение «${message}»`);
+  dismiss.addEventListener('click', () => {
+    byId(({ export: 'download', import: 'open', new: 'new' })[operation]).focus();
+    alert.remove();
+  });
+  alert.append(text, dismiss);
+  byId('operation-alerts').append(alert);
+  text.textContent = message;
+  errors.set(operation, { alert, entry });
+  if (!messages.open) setUnread(true);
 }
 
 export function reportAlignment({
