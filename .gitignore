@@ -1,3 +1,6 @@
 node_modules/
 dist/
 test-results/
+
+/.agents/skills/no-slop-ui/
+/.planning/ui-reviews/
