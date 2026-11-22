@@ -39,11 +39,12 @@ for (const name of graphFixtures) {
     jitter.push(result);
   }
   const stages = diagnostics.map(({ scope, elk, positioned, laneBoxes, flows, limits, obstacles }) => {
-    const paths = flows.map((flow) => elkPath(elk.edges?.find(({ id }) => id === flow.id))).filter(Boolean);
-    const elkCost = routeCost(paths);
+    const elkByKey = new Map(elk.edges?.map((edge) => [edge.id, elkPath(edge)]));
+    const paths = flows.flatMap(({ id, edge }) => elkByKey.has(id) ? [[edge.id, elkByKey.get(id)]] : []);
+    const elkCost = routeCost(paths.map(([, path]) => path));
     const packed = flows.flatMap((flow) => {
-      const points = elkPath(elk.edges?.find(({ id }) => id === flow.id));
-      if (!points || simplifyRoute(points).length !== 2) return [];
+      const points = elkByKey.get(flow.id);
+      if (flow.back || !points || simplifyRoute(points).length !== 2) return [];
       const straight = simplifyRoute(pathOf(graph, flow.edge)).length === 2;
       if (straight) return [];
       const free = straightPassage(flow, limits, obstacles);
@@ -55,7 +56,7 @@ for (const name of graphFixtures) {
     }
     return {
       scope: scope.id,
-      elk: { nodes: elk.children?.map(({ id, x, y, width, height }) => ({ id, x, y, width, height })), routeCost: elkCost },
+      elk: { nodes: elk.children?.map(({ id, x, y, width, height }) => ({ id, x, y, width, height })), routes: paths, routeCost: elkCost },
       packed: { nodes: [...positioned].map(([figure, box]) => [figure.id, box]),
         lanes: [...laneBoxes].map(([figure, box]) => [figure.id, box]), lostStraight: packed,
         routeCost: routeCost(flows.map(({ edge }) => pathOf(graph, edge))) }
