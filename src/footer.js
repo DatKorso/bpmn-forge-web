@@ -3,6 +3,9 @@ const messages = byId('messages');
 const messageButton = byId('show-messages');
 const unreadIndicator = byId('unread-messages');
 const status = byId('status');
+const alignmentStatus = byId('alignment-status');
+const alignmentSummary = byId('alignment-summary');
+const alignmentDetails = byId('alignment-details');
 const alignmentResult = byId('alignment-result');
 const alignmentSkips = byId('alignment-skips');
 const initialAlignment = alignmentResult.textContent;
@@ -13,17 +16,24 @@ function setUnread(unread) {
   else messageButton.removeAttribute('aria-describedby');
 }
 
-for (const dialog of [messages, byId('changelog')]) {
-  const button = byId(`show-${dialog.id}`);
-  button.addEventListener('click', () => {
-    dialog.showModal();
-    if (dialog === messages) setUnread(false);
+function connectDialog(dialog, ...buttons) {
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      button.focus();
+      dialog.showModal();
+      if (dialog === messages) setUnread(false);
+    });
+  }
+  dialog.addEventListener('close', () => {
+    if (document.activeElement === document.body) buttons[0].focus();
   });
-  dialog.addEventListener('close', () => button.focus());
 }
 
+connectDialog(messages, messageButton, alignmentDetails);
+connectDialog(byId('changelog'), byId('show-changelog'));
+
 function announce(message, attention) {
-  status.textContent = message;
+  status.replaceChildren(message);
   if (attention && !messages.open) setUnread(true);
 }
 
@@ -34,22 +44,55 @@ export function reportOperation(message, error = false) {
   announce(message, error);
 }
 
-export function reportAlignment(message, skipped = [], error = false) {
-  alignmentResult.textContent = message;
-  alignmentResult.classList.toggle('error', error);
-  const reasons = skipped.map(({ name, reason }) => `${name} — ${reason}.`);
-  alignmentSkips.replaceChildren(...reasons.map((reason) => {
+export function reportAlignment({
+  moved = 0, resized = 0, rerouted = 0, movedPools = 0, reroutedMessages = 0, skipped = [], reason
+}) {
+  const severity = reason ? 'error' : skipped.length ? 'warning' : '';
+  const movedShapes = moved - movedPools;
+  const reroutedOrdinary = rerouted - reroutedMessages;
+  const changes = [
+    ['Пулы', movedPools],
+    ['Потоки сообщений', reroutedMessages],
+    ['Фигуры', movedShapes],
+    ['Контейнеры', resized],
+    ['Связи', reroutedOrdinary]
+  ].filter(([, count]) => count > 0).map(([label, count]) => `${label}: ${count}`);
+
+  const warning = skipped.length ? `Предупреждение: пропущено участков — ${skipped.length}` : '';
+  const summary = reason ? `Ошибка: ${reason}` :
+    [warning, ...changes].filter(Boolean).join(' · ') || 'Изменений нет';
+  const counts = `Перемещено фигур: ${movedShapes}. Расширено контейнеров: ${resized}. Обновлено обычных связей: ${reroutedOrdinary}. ` +
+    `Перемещено пулов: ${movedPools}. Перестроено потоков сообщений: ${reroutedMessages}. ` +
+    `Пропущено участков: ${skipped.length}.`;
+  alignmentResult.textContent = reason ? summary : skipped.length ? `Предупреждение. ${counts}` : counts;
+  alignmentResult.dataset.severity = severity;
+  alignmentSkips.replaceChildren(...skipped.map(({ name, reason }) => {
     const item = document.createElement('li');
-    item.textContent = reason;
+    item.textContent = `${name} — ${reason}.`;
     return item;
   }));
-  alignmentSkips.hidden = !reasons.length;
-  announce([message, ...reasons].join(' '), error || reasons.length > 0);
+  alignmentSkips.hidden = !skipped.length;
+
+  alignmentStatus.dataset.severity = severity;
+  alignmentSummary.textContent = summary;
+  alignmentSummary.title = summary;
+  alignmentStatus.hidden = false;
+  announce(summary, Boolean(severity));
 }
 
+export function clearAlignmentStatus() {
+  if (alignmentStatus.hidden) return;
+  if (alignmentStatus.contains(document.activeElement)) messageButton.focus();
+  alignmentStatus.hidden = true;
+  if (status.textContent === alignmentSummary.textContent) status.replaceChildren();
+}
+
+byId('dismiss-alignment').addEventListener('click', clearAlignmentStatus);
+
 export function resetAlignment() {
+  clearAlignmentStatus();
   alignmentResult.textContent = initialAlignment;
-  alignmentResult.classList.remove('error');
+  delete alignmentResult.dataset.severity;
   alignmentSkips.replaceChildren();
   alignmentSkips.hidden = true;
 }

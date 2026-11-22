@@ -81,8 +81,12 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4M8 9h8m-8 3h8m-8 3h8" /></svg>
           </button>
           <span id="selection-reason" hidden>Выберите пул, дорожку, раскрытый подпроцесс или несколько фигур.</span>
+          <span id="selection-scope" hidden>У одного пула выравнивается содержимое внутри рамки. Несколько выбранных пулов перемещаются целиком.</span>
         </span>
-        <button id="align" class="primary" type="button" disabled>Автовыровнять</button>
+        <span class="tool">
+          <button id="align" class="primary" type="button" aria-describedby="alignment-scope" disabled>Автовыровнять</button>
+          <span id="alignment-scope" hidden>Выравнивает всю схему, включая пулы и потоки сообщений.</span>
+        </span>
       </form>
     </section>
 
@@ -136,6 +140,14 @@
         <span id="unread-messages" class="unread-indicator" hidden></span>
       </button>
       <span id="unread-description" hidden>Есть непрочитанные сообщения</span>
+      <div id="alignment-status" class="alignment-status" hidden>
+        <span id="alignment-summary" class="alignment-summary"></span>
+        <button id="alignment-details" type="button" aria-haspopup="dialog" aria-controls="messages">Подробнее</button>
+        <button id="dismiss-alignment" class="icon-button" type="button" aria-label="Закрыть статус выравнивания"
+            title="Закрыть статус выравнивания">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
       <div class="footer-release">
         <a id="version" title="Репозиторий BPMN Forge"></a>
         <button id="show-changelog" class="icon-button" type="button" aria-label="История изменений"
@@ -155,9 +167,9 @@
       </header>
       <div class="dialog-content" tabindex="0">
         <section aria-labelledby="alignment-title">
-          <h3 id="alignment-title">Автовыравнивание</h3>
+          <h3 id="alignment-title">Выравнивание</h3>
           <p class="grid-label">Шаг привязки · 10</p>
-          <p id="alignment-result">Автовыравнивание ещё не выполнялось.</p>
+          <p id="alignment-result">Выравнивание ещё не выполнялось.</p>
           <ul id="alignment-skips" hidden></ul>
         </section>
         <section aria-labelledby="operation-title">

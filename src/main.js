@@ -6,7 +6,7 @@ import 'bpmn-js/dist/assets/bpmn-js.css';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css';
 import 'bpmn-js-color-picker/colors/color-picker.css';
 import autoAlign from './auto-align.js';
-import { reportAlignment, reportOperation, resetAlignment } from './footer.js';
+import { clearAlignmentStatus, reportAlignment, reportOperation, resetAlignment } from './footer.js';
 import { protectConditionalFlows, renderProperties } from './properties.js';
 import russian from './russian.js';
 import { reportGapValidity, updateToolTooltip } from './toolbar.js';
@@ -52,6 +52,7 @@ function updateControls() {
   const reason = busy || !modeler ? 'Дождитесь загрузки схемы.' : modeler.get('autoAlign').selection(selection).reason;
   alignSelection.setAttribute('aria-disabled', String(Boolean(reason)));
   selectionReason.textContent = reason ?? '';
+  alignSelection.setAttribute('aria-describedby', reason ? 'selection-reason' : 'selection-scope');
   updateToolTooltip();
   renderProperties(modeler, selection);
   propertiesFields.inert = busy;
@@ -97,6 +98,9 @@ async function loadDiagram(readXML, nextFilename, message) {
     const { warnings } = await next.importXML(await readXML());
     const canvas = next.get('canvas');
     if (canvas.getRootElement().children.length) canvas.zoom('fit-viewport');
+    next.on('commandStack.changed', () => {
+      if (modeler === next) clearAlignmentStatus();
+    });
     next.on(['commandStack.changed', 'root.set', 'selection.changed'], () => {
       if (modeler === next) updateControls();
     });
@@ -217,29 +221,20 @@ byId('align').addEventListener('click', () => {
   if (busy || !modeler || !checkGaps()) return;
 
   try {
-    const { moved, resized, rerouted, skipped, movedPools, reroutedMessages } = modeler.get('autoAlign').run(alignmentGaps());
-    reportAlignment(
-      `Перемещено фигур: ${moved}. Расширено контейнеров: ${resized}. Обновлено связей: ${rerouted}. ` +
-      `Перемещено пулов: ${movedPools}. Перестроено потоков сообщений: ${reroutedMessages}. ` +
-      `Пропущено участков: ${skipped.length}.`,
-      skipped
-    );
+    reportAlignment(modeler.get('autoAlign').run(alignmentGaps()));
   } catch (error) {
-    reportAlignment('Не удалось выполнить автовыравнивание.', [], true);
+    reportAlignment({ reason: 'Не удалось выполнить автовыравнивание.' });
     console.error(error);
   }
 });
 
 alignSelection.addEventListener('click', () => {
-  if (busy || !modeler || !checkGaps() || alignSelection.getAttribute('aria-disabled') === 'true') return;
+  if (busy || !modeler || alignSelection.getAttribute('aria-disabled') === 'true' || !checkGaps()) return;
   try {
     const selection = modeler.get('selection').get();
-    const { moved, rerouted, reason, movedPools, reroutedMessages } = modeler.get('autoAlign').runSelection(selection, alignmentGaps());
-    if (reason) reportAlignment(`Не удалось выровнять выделение: ${reason}.`, [], true);
-    else reportAlignment(`Выделение: перемещено фигур — ${moved}, обновлено связей — ${rerouted}. ` +
-      `Перемещено пулов: ${movedPools}. Перестроено потоков сообщений: ${reroutedMessages}.`);
+    reportAlignment(modeler.get('autoAlign').runSelection(selection, alignmentGaps()));
   } catch (error) {
-    reportAlignment('Не удалось выровнять выделение.', [], true);
+    reportAlignment({ reason: 'Не удалось выровнять выделение.' });
     console.error(error);
   }
 });

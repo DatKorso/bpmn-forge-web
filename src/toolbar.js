@@ -11,7 +11,7 @@ export function updateToolTooltip() {
   if (!button) return;
 
   const description = document.getElementById(button.getAttribute('aria-describedby'));
-  tooltip.textContent = [button.getAttribute('aria-label'), description?.textContent]
+  tooltip.textContent = [button.getAttribute('aria-label') ?? button.textContent.trim(), description?.textContent]
     .filter(Boolean).join('\n');
 
   const anchor = button.getBoundingClientRect();
@@ -35,7 +35,7 @@ function dismissToolTooltip() {
 }
 
 for (const tool of document.querySelectorAll('.tool')) {
-  const button = tool.querySelector('.tool-button');
+  const button = tool.querySelector('button');
 
   tool.addEventListener('pointerenter', (event) => {
     if (event.pointerType === 'touch') return;
@@ -47,7 +47,10 @@ for (const tool of document.querySelectorAll('.tool')) {
     updateToolTooltip();
   });
   button.addEventListener('focus', () => {
-    if (button.matches(':focus-visible')) focusedTool = button;
+    if (button.matches(':focus-visible')) {
+      hoveredTool = undefined;
+      focusedTool = button;
+    }
     updateToolTooltip();
   });
   button.addEventListener('blur', () => {
