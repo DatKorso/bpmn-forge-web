@@ -15,3 +15,37 @@ Apple M1 Pro, macOS 26.5.2, Node.js 24.14.0, Chromium 159.0.8154.6 headless, 200
 | Node plan | 2480 | 2322, 2271, 2304, 2342, 2361 | 2322 |
 | Chromium click to preview | 2393 | 2225, 2228, 2248, 2238, 2238 | 2238 |
 | Chromium longest main-thread task | 2086 | 2094, 2092, 2130, 2123, 2102 | 2102 |
+
+## Occupied-segment index
+
+Exact route fingerprints matched both engines for every original fixture and every one of the 294 perturbed inputs.
+
+| Measurement | Cold | Five warm runs | Warm median |
+|---|---:|---|---:|
+| Node plan | 510 | 309, 301, 308, 287, 305 | 305 |
+| Chromium click to preview | 503 | 327, 309, 306, 302, 297 | 306 |
+| Chromium longest main-thread task | 213 | 188, 179, 180, 180, 186 | 180 |
+
+## Placement
+
+- Adopted lane order as the tie-breaker between ready nodes. On invoice approval this reduced area from 486000 to 423000 px² and removed one bend. The 26 px overlap remained.
+- Added downstream-corner placement for a single boundary event whose flow leaves its host unit. Invoice approval now has no shared length between unrelated flows, five bends instead of eight, and route length 1279 px instead of 1816 px. Both fixed same-lane continuations remain straight. Returning boundary flows keep centered placement.
+- Rejected individual gateway ports. The trial added four bends in each medium workload. Boundary-event ports improved incident escalation but erased the invoice gains when combined with lane ordering. Centering data objects on their owners after ELK caused a collision in `shared-data`.
+- Authored branch-order agreement stayed at five agreeing pairs, four ties and zero inversions. A one-task local edit moved 3 of 34 and 4 of 35 existing nodes respectively. Both median shifts stayed at 0 px and both maxima at 180 px. Results match the baseline on both measures.
+- All 17 supported cases pass R1–R6 after placement, including 294 DI perturbations. The three excluded fixtures still produce the documented refusals. Legacy route fingerprints still match the original baseline. `graph-layout-current.json` records the accepted placement changes. The original snapshot remains the crossing reference.
+
+## Visual review
+
+Compared legacy and graph layouts in Chromium on all nine flagged diagrams at minimum gaps 40×30. The extra bend in the incident and invoice handoffs preserves forward placement across lanes. Acyclic reorder reserves the middle row for the two-edge continuation and routes its shortcut around it. Both compact-loop variants preserve a straight main path and make the return visible along the outside of the packed pool. Both medium workflows preserve the three lane bands and keep their exception paths separate from the direct bypass.
+
+Two visibility concerns remain. At 1.73× the legacy area, tight pool uses an extra column and its timeout return is close to the gateway caption. The self-loop exit and return approach the same side of the task, giving a tight visual pairing of opposing arrowheads. Keep these examples open for stabilization before expanding to collaborations. The initial review thresholds remain active. The beta flag remains a product decision.
+
+## Worker decision after placement
+
+| Measurement | Cold | Five warm runs | Warm median |
+|---|---:|---|---:|
+| Node plan | 499 | 305, 318, 291, 295, 281 | 295 |
+| Chromium click to preview | 512 | 334, 314, 306, 303, 299 | 306 |
+| Chromium longest main-thread task | 217 | 191, 183, 180, 179, 187 | 183 |
+
+The final warm result meets both agreed criteria. Zero of five main-thread tasks reached 200 ms, and the median to preview was 306 ms. Retain the main-thread planner and remeasure if the representative workload or planner changes.

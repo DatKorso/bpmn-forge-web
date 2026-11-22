@@ -1,6 +1,6 @@
 ---
 created: 2026-11-23
-title: Move graph layout to a Web Worker
+title: Re-evaluate a Web Worker if graph layout exceeds the Chromium threshold
 area: editor
 files:
   - src/graph-layout/index.js
@@ -9,9 +9,11 @@ files:
   - scripts/benchmark-graph-layout.mjs
 ---
 
-## Problem
+## Decision
 
-The β planner exceeded the one-second threshold recorded in the alignment benchmark. On 200 nodes with 216 SequenceFlow edges, the measured median was about 2.3 s on Apple M1 Pro with Node 24.22.3. ELK and final route planning currently run on the main thread.
+Defer Worker implementation. On Apple M1 Pro with Chromium 159.0.8154.6, the optimized 200-node, 216-flow workload took 306 ms median from click to preview. The five warm main-thread tasks were 191, 183, 180, 179 and 187 ms. Re-evaluate when at least three of five warm runs reach 200 ms or more. Track median click-to-preview against the separate one-second goal.
+
+See the [measurement record](../../quick/261123-3h0-establish-elk-layout-quality-baseline-an/DECISION.md).
 
 ## Scope
 
