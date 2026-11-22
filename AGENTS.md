@@ -2,7 +2,7 @@
 
 ## Project Structure
 
-BPMN Forge is a browser-based BPMN editor built with Vite and `bpmn-js`. The HTML entry point is `index.html`. In `src/`, `main.js` wires up the editor and toolbar, `auto-align.js` integrates alignment with the modeler's command stack, and `layout.js` contains the geometry and layout logic. Russian interface text lives in `index.html`, `src/main.js`, and `src/russian.js`. Styles are in `src/style.css`, and Vite bundles the BPMN fonts and assets from `bpmn-js`. Layout tests live in `test/layout.test.js`.
+BPMN Forge is a browser-based BPMN editor built with Vite and `bpmn-js`. The HTML entry point is `index.html`. In `src/`, `main.js` wires up the editor and toolbar, `auto-align.js` integrates alignment with the modeler's command stack, and `layout.js` contains the geometry and layout logic. Whole-diagram, scope, and selection planning live in `alignment-plan.js`, `scope-plan.js`, and `selection-plan.js`. Russian interface text lives in `index.html`, `src/main.js`, and `src/russian.js`. Styles are in `src/style.css`, and Vite bundles the BPMN fonts and assets from `bpmn-js`. Layout tests live in `test/`, with BPMN geometry goldens in `test/fixtures/` and browser workflows in `e2e/`.
 
 ## Build, Test, and Development
 
