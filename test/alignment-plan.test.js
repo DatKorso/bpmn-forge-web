@@ -982,6 +982,46 @@ test('keeps the base timer layout and routing when an artifact occupies the gap'
   assert.equal(plan.routes.get(direct).length, 2);
 });
 
+test('places a timer away from the midpoint when the neighboring row needs more clearance', () => {
+  const d = diagram();
+  const pool = d.add('Pool', box(10, 880, 4150, 560), { kind: 'pool', horizontal: true, header: 30 });
+  const add = (id, bounds, type = 'Task', options = {}) =>
+    d.add(id, bounds, { scope: pool, type: 'bpmn:' + type, ...options });
+  const split = add('Review', box(3855, 1037, 50, 50), 'ExclusiveGateway');
+  const edits = add('Edits', box(3960, 1022, 100, 80), 'ManualTask');
+  const timer = add('Timer', box(3962, 1162, 36, 36), 'IntermediateCatchEvent');
+  const start = add('Start', box(132, 1146, 36, 36), 'StartEvent');
+  add('Development', box(1390, 920, 903, 262), 'SubProcess', { expanded: true });
+  const prepare = add('Prepare', box(670, 1022, 100, 80));
+  const send = add('Send', box(520, 1022, 100, 80));
+  const analysis = add('Analysis', box(280, 1124, 100, 80));
+  const next = add('Next', box(412, 1139, 50, 50), 'ExclusiveGateway');
+  d.connect(send, prepare);
+  d.connect(next, send);
+  d.connect(analysis, next);
+  const direct = d.connect(start, analysis);
+  d.connect(split, edits);
+  const entry = d.connect(split, timer);
+  const exit = d.connect(timer, analysis);
+
+  const spacing = { x: 90, y: 90 };
+  const plan = planAlignment(d, spacing);
+  const timerBox = finalBox(plan, timer);
+  const editsBox = finalBox(plan, edits);
+  assert.deepEqual(plan.skipped, []);
+  assert.equal(timerBox.x, 1232);
+  assert.ok(timerBox.y - (editsBox.y + editsBox.height) >= spacing.y);
+  assert.ok(timerBox.y + timerBox.height <= finalBox(plan, analysis).y);
+  assert.equal(plan.routes.get(entry).length, 3);
+  assert.equal(plan.routes.get(exit).length, 3);
+  assert.equal(plan.routes.get(direct).length, 2);
+
+  apply(plan);
+  const repeated = planAlignment(d, spacing);
+  assert.equal(repeated.boxes.size, 0);
+  for (const [edge, path] of repeated.routes) assert.deepEqual(path, edge.points);
+});
+
 test('places the timer between columns in a vertical pool and preserves its process coordinate', () => {
   const { d, split, timer, analysis, direct, entry, exit } = timerBranch();
   const nodes = [...d.figures];

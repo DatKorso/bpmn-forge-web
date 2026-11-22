@@ -445,16 +445,22 @@ function improveSingleNodeBranches(best, { units, diagram, scope, frame, toLocal
     const origin = frame?.y ?? 0;
     const dy = origin + snap((start + end) / 2 - origin) - center(box, 'y');
     const area = boundsOf(parts.map((part) => translate(local(plan, part), { x: 0, y: dy })));
-    if (area.y < start || bottom(area) > end) continue;
-    if ([scope, lane].some((container) => {
-      if (!plan.boxes.has(container)) return false;
-      return !contains(usableArea(container, local(plan, container)), area);
-    })) continue;
-    if (units.some((unit) => unit.figure !== figure && unit.lane === lane &&
-        !hasClearance(area, boundsOf(unit.parts.map((part) => local(plan, part))), spacing))) continue;
+    const limits = [scope, lane].filter((container) => plan.boxes.has(container))
+      .map((container) => usableArea(container, local(plan, container)));
+    if (limits.some((limit) => area.x < limit.x || right(area) > right(limit))) continue;
+    limits.push({ y: start, height: end - start });
+    const neighbors = units.filter((unit) => unit.figure !== figure && unit.lane === lane)
+      .map((unit) => boundsOf(unit.parts.map((part) => local(plan, part))));
+    // If the midpoint is too close to a neighboring row, try the nearest grid
+    // position beyond its clearance while keeping the branch's column.
+    const blockers = neighbors.filter((neighbor) => Math.max(area.x - right(neighbor), neighbor.x - right(area)) < spacing.x)
+      .map(({ y, height }) => ({ y: y - spacing.y, height: height + 2 * spacing.y }));
+    const offset = offsets([{ box: area, limits }], 'y', blockers).find((shift) =>
+      neighbors.every((neighbor) => hasClearance(translate(area, { x: 0, y: shift }), neighbor, spacing)));
+    if (offset === undefined) continue;
 
     const moved = clone(plan);
-    moveTree(moved, diagram, figure, toWorld({ x: 0, y: dy }));
+    moveTree(moved, diagram, figure, toWorld({ x: 0, y: dy + offset }));
     if (scopeCollisions(moved, plan, [...new Set([...obstacles, ...parts])], lanes, scope)) continue;
     const tested = evaluate({ ...best, plan: moved });
     if (!tested || tested.cost.slice(0, 3).some((value, index) => value > best.cost[index]) ||
