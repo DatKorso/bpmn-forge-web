@@ -51,6 +51,73 @@ function interactionCost(segment, otherSegments, includeStart) {
   return [crossings, overlap];
 }
 
+function lowerBound(levels, value) {
+  let start = 0;
+  let end = levels.length;
+  while (start < end) {
+    const middle = (start + end) >>> 1;
+    if (levels[middle] < value) start = middle + 1;
+    else end = middle;
+  }
+  return start;
+}
+
+function occupiedIndex(segments) {
+  const horizontalLines = { levels: [], spans: new Map() };
+  const verticalLines = { levels: [], spans: new Map() };
+  const diagonals = [];
+  const all = [];
+
+  function add(segment) {
+    const [a, b] = segment;
+    all.push(segment);
+    const h = horizontal(a, b);
+    if (!h && a.x !== b.x) {
+      diagonals.push(segment);
+      return;
+    }
+    const lines = h ? horizontalLines : verticalLines;
+    const level = h ? a.y : a.x;
+    const start = h ? a.x : a.y;
+    const end = h ? b.x : b.y;
+    if (!lines.spans.has(level)) {
+      lines.levels.splice(lowerBound(lines.levels, level), 0, level);
+      lines.spans.set(level, []);
+    }
+    lines.spans.get(level).push([Math.min(start, end), Math.max(start, end)]);
+  }
+
+  function cost(a, b, includeStart) {
+    const h = horizontal(a, b);
+    if (!h && a.x !== b.x) return interactionCost([a, b], all, includeStart);
+    const parallel = h ? horizontalLines : verticalLines;
+    const perpendicular = h ? verticalLines : horizontalLines;
+    const level = h ? a.y : a.x;
+    const start = h ? a.x : a.y;
+    const end = h ? b.x : b.y;
+    const low = Math.min(start, end);
+    const high = Math.max(start, end);
+    let overlap = 0;
+    // Preserve insertion order when summing fractional overlaps.
+    for (const [from, to] of parallel.spans.get(level) ?? []) {
+      overlap += Math.max(0, Math.min(high, to) - Math.max(low, from));
+    }
+    let crossings = 0;
+    const { levels, spans } = perpendicular;
+    for (let i = lowerBound(levels, low); i < levels.length && levels[i] < high; i++) {
+      if (!includeStart && levels[i] === low) continue;
+      for (const [from, to] of spans.get(levels[i])) {
+        if (from < level && level < to) crossings++;
+      }
+    }
+    for (const diagonal of diagonals) crossings += interaction([a, b], diagonal, includeStart)[0];
+    return [crossings, overlap];
+  }
+
+  for (const segment of segments) add(segment);
+  return { add, cost };
+}
+
 export function simplifyRoute(points) {
   const result = [];
   for (const point of points) {
@@ -226,10 +293,10 @@ function addCost(a, b) {
 }
 
 export function routeFlow(flow, bounds, obstacles, occupied = []) {
-  return findRoute(flow, bounds, obstacles, occupied, obstacleIndex(obstacles));
+  return findRoute(flow, bounds, obstacles, occupiedIndex(occupied).cost, obstacleIndex(obstacles));
 }
 
-function findRoute(flow, bounds, obstacles, occupied, blocked) {
+function findRoute(flow, bounds, obstacles, occupiedCost, blocked) {
   const { passage, frames = [], startPhase = 0, sourceProjection, targetProjection } = flow;
   const advance = passage ?? ((phase) => phase);
   const { source, target } = flow;
@@ -241,7 +308,7 @@ function findRoute(flow, bounds, obstacles, occupied, blocked) {
   const sourceEnd = flow.vertical ? bottom(source) : right(source);
   const advances = !passage && !flow.back && sourceEnd <= target[progressAxis];
   function segmentCost(a, b, bend, includeStart) {
-    const [crossings, overlap] = interactionCost([a, b], occupied, includeStart);
+    const [crossings, overlap] = occupiedCost(a, b, includeStart);
     // Prefer a forward path even when outgoing branches need to share a stem.
     const retreat = advances ? Math.max(0, a[progressAxis] - b[progressAxis]) : 0;
     return [crossings, retreat, overlap, Number(bend), length(a, b)];
@@ -380,7 +447,7 @@ function findRoute(flow, bounds, obstacles, occupied, blocked) {
 
 export function routeFlows(flows, bounds, obstacles, fixed = []) {
   const routes = new Map();
-  const occupied = fixed.flatMap((points) => segments(simplifyRoute(points)));
+  const occupied = occupiedIndex(fixed.flatMap((points) => segments(simplifyRoute(points))));
   const blocked = obstacleIndex(obstacles);
   const straight = new Set(flows.filter((flow) => !flow.back && hasStraightRoute(flow, bounds, blocked)));
   // Reserve clear straight paths before off-row branches can occupy their ports.
@@ -389,10 +456,10 @@ export function routeFlows(flows, bounds, obstacles, fixed = []) {
     Number(!!b.isDefault) - Number(!!a.isDefault) || (a.id < b.id ? -1 : 1));
 
   for (const flow of ordered) {
-    const route = findRoute(flow, bounds, obstacles, occupied, blocked);
+    const route = findRoute(flow, bounds, obstacles, occupied.cost, blocked);
     if (!route) return null;
     routes.set(flow.id, route);
-    occupied.push(...segments(route));
+    for (const segment of segments(route)) occupied.add(segment);
   }
   return routes;
 }
