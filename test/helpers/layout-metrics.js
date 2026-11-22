@@ -1,4 +1,4 @@
-import { boundsOf, center, intersects } from '../../src/layout.js';
+import { boundsOf, intersects } from '../../src/layout.js';
 import { contains } from '../../src/alignment-state.js';
 import { acceptsRoute, routeCost, simplifyRoute } from '../../src/route-flows.js';
 
@@ -80,7 +80,8 @@ export function measure(diagram, plan, diagnostics = []) {
     const obstacles = solids.filter((figure) => figure.scope === source.scope).map(placed);
     if (!acceptsRoute(points, flow, unlimited, obstacles)) r3.push(edge.id);
     if (!local.get(edge)?.back && (source.host ?? source) !== (target.host ?? target)) {
-      if (center(flow.source, axis) >= center(flow.target, axis)) r4.push(edge.id);
+      const span = vertical ? 'height' : 'width';
+      if (flow.source[axis] + flow.source[span] > flow.target[axis]) r4.push(edge.id);
       localRetreat += points.slice(1).reduce((sum, point, i) => sum + Math.max(0, points[i][axis] - point[axis]), 0);
     }
   }

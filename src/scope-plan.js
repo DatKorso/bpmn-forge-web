@@ -1,6 +1,7 @@
 import { adjacentBranches, boundsOf, ceilGrid, center, compactLoops, forwardFlows, layoutProcess, snap, translate } from './layout.js';
-import { acceptsRoute, compareCosts, ROUTE_MARGIN, routeCost, routeFlows, simplifyRoute } from './route-flows.js';
+import { acceptsRoute, compareCosts, routeCost, routeFlows, simplifyRoute } from './route-flows.js';
 import { byId, right, bottom, sameBox, transpose, localSpacing, descendantOf, validBox, clone, moveTree, attachments, offsets } from './alignment-state.js';
+import { routingBounds } from './routing-bounds.js';
 import { usableArea, resize, makeRoom, fitLanes, fitSelectedFrame, scopeCollisions } from './container-fit.js';
 
 export function hasClearance(a, b, gaps) {
@@ -17,19 +18,6 @@ export function respectsGaps(units, state, gaps, toLocal, includeAttachments = f
   }));
   return boxes.every(({ lane, box }, index) => boxes.slice(index + 1).every(({ lane: otherLane, box: other }) =>
     lane !== otherLane || hasClearance(box, other, gaps)));
-}
-
-export function routingBounds(scope, plan, lanes, toLocal, obstacles) {
-  for (const lane of lanes) {
-    const box = toLocal(plan.boxes.get(lane));
-    if (lane.header) obstacles.push(toLocal({ ...box, width: Math.min(lane.header, box.width) }));
-  }
-  const frame = plan.boxes.get(scope);
-  const pad = frame ? 0 : ROUTE_MARGIN * 2;
-  const content = frame ? toLocal(usableArea(scope, toLocal(frame), false))
-    : boundsOf([...obstacles, ...lanes.map((lane) => plan.boxes.get(lane))]);
-  return { left: content.x - pad, top: content.y - pad,
-    right: right(content) + pad, bottom: bottom(content) + pad };
 }
 
 export function spacingLayouts(units, graph, spacing, options) {

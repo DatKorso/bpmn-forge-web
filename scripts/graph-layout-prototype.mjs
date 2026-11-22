@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import { planAlignment } from '../src/alignment-plan.js';
-import { planGraphLayout } from '../src/graph-layout/prototype.js';
+import { planGraphLayout } from '../src/graph-layout/index.js';
 import { routeCost, simplifyRoute } from '../src/route-flows.js';
 import { readFixture } from '../test/helpers/read-fixture.js';
 import { elkPath, graphFixtures, graphGaps, measure, normalized, pathOf, perturb, straightPassage } from '../test/helpers/layout-metrics.js';

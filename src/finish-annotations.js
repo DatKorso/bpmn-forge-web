@@ -157,11 +157,12 @@ export function finishFixedAnnotations(diagram, planned) {
   }
   const layout = { ...notes, containers };
   const bounds = (figure) => state.boxes.get(figure);
+  const solids = notes.figures.filter((figure) => !isAnnotation(figure));
   const preferred = (note) => {
     const [anchor] = notes.anchors.get(note);
     const frame = containers.get(note)[0];
     const area = anchor ? bounds(anchor) : frame ? bounds(frame) :
-      boundsOf(notes.figures.filter((figure) => !isAnnotation(figure)).map(bounds));
+      solids.length ? boundsOf(solids.map(bounds)) : { x: 0, y: 0 };
     return { ...note.box, x: area.x, y: area.y - note.box.height - ROUTE_MARGIN };
   };
   if (placeAnnotations(layout, state, diagram.edges, new Set(notes.annotations), preferred) ||

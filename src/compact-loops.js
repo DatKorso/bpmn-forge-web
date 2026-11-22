@@ -1,9 +1,10 @@
+import { routingBounds } from './routing-bounds.js';
 import { boundsOf, center, intersects } from './layout.js';
 import { cutsInterior, routeCost, routeFlows, simplifyRoute } from './route-flows.js';
 import { obstructedFlows } from './annotation-layout.js';
 import { right, bottom, descendantOf, contains, validBox, clone, transpose, localSpacing } from './alignment-state.js';
 import { usableArea } from './container-fit.js';
-import { hasClearance, routingBounds } from './scope-plan.js';
+import { hasClearance } from './scope-plan.js';
 
 export function preserveCompactLoops(state, loops, diagram, messageFlows, gaps) {
   const edges = [...diagram.internalEdges, ...messageFlows];
