@@ -1,4 +1,4 @@
-import { adjacentBranches, boundsOf, ceilGrid, center, forwardFlows, intersects, layoutProcess, snap, translate, translateWaypoints } from './layout.js';
+import { adjacentBranches, boundsOf, ceilGrid, center, compactLoops, forwardFlows, intersects, layoutProcess, snap, translate, translateWaypoints } from './layout.js';
 import { acceptsRoute, compareCosts, cutsInterior, ROUTE_MARGIN, routeCost, routeFlows, simplifyRoute, translatedRouteIsClear } from './route-flows.js';
 import { collaboration, placePools, routeMessages } from './pool-layout.js';
 import { annotationLayout, isAnnotation, isFrame, obstructedFlows, placeAnnotations, routeAssociations } from './annotation-layout.js';
@@ -362,6 +362,19 @@ function respectsGaps(units, state, gaps, toLocal, includeAttachments = false) {
     lane !== otherLane || hasClearance(box, other, gaps)));
 }
 
+function routingBounds(scope, plan, lanes, toLocal, obstacles) {
+  for (const lane of lanes) {
+    const box = toLocal(plan.boxes.get(lane));
+    if (lane.header) obstacles.push(toLocal({ ...box, width: Math.min(lane.header, box.width) }));
+  }
+  const frame = plan.boxes.get(scope);
+  const pad = frame ? 0 : ROUTE_MARGIN * 2;
+  const content = frame ? toLocal(usableArea(scope, toLocal(frame), false))
+    : boundsOf([...obstacles, ...lanes.map((lane) => plan.boxes.get(lane))]);
+  return { left: content.x - pad, top: content.y - pad,
+    right: right(content) + pad, bottom: bottom(content) + pad };
+}
+
 function spacingLayouts(units, graph, spacing, options) {
   const { x, y, maxX, maxY } = spacing;
   const limits = [];
@@ -526,16 +539,7 @@ function planScope(diagram, state, scope, gaps, fitSelection) {
     if (!candidate) return null;
     const { plan } = candidate;
     const obstacles = obstaclesInScope.map((figure) => plan.boxes.get(figure));
-    for (const lane of lanes) {
-      const box = toLocal(plan.boxes.get(lane));
-      if (lane.header) obstacles.push(toLocal({ ...box, width: Math.min(lane.header, box.width) }));
-    }
-    const f = plan.boxes.get(scope);
-    const drawing = f ?? boundsOf(lanes.length ? [...obstacles, ...lanes.map((lane) => plan.boxes.get(lane))] : obstacles);
-    const pad = f ? 0 : ROUTE_MARGIN * 2;
-    const content = f ? toLocal(usableArea(scope, toLocal(f), false)) : drawing;
-    const bounds = { left: content.x - pad, top: content.y - pad,
-      right: right(content) + pad, bottom: bottom(content) + pad };
+    const bounds = routingBounds(scope, plan, lanes, toLocal, obstacles);
     const flows = graph.map((flow) => ({
       ...flow,
       source: plan.boxes.get(flow.edge.source),
@@ -661,8 +665,10 @@ function planScope(diagram, state, scope, gaps, fitSelection) {
     if (tested && compareCosts(tested.cost.slice(0, 3), best.cost.slice(0, 3)) <= 0) best = tested;
   }
 
+  let measureExcess;
   if (spacing.maxX !== undefined || spacing.maxY !== undefined) {
     const { layouts, excess } = spacingLayouts(units, graph, spacing, { compact });
+    measureExcess = excess;
     const baseline = { ...best, excess: excess(best.plan, toLocal) };
     best = baseline;
     const containers = frame ? [scope, ...lanes] : lanes;
@@ -688,7 +694,71 @@ function planScope(diagram, state, scope, gaps, fitSelection) {
   if (oldScope && scope.kind !== 'pool' && !sameBox(oldScope, best.plan.boxes.get(scope))) {
     makeRoom(best.plan, diagram, scope, oldScope, gaps);
   }
-  return { state: best.plan };
+  const loops = flip ? [] : compactLoops(units, diagram.incoming, diagram.outgoing, lanes.length > 0);
+  return { state: best.plan, loops: loops.map((loop) =>
+    ({ ...loop, scope, members, units, lanes, measureExcess })) };
+}
+
+function preserveCompactLoops(state, loops, diagram, messageFlows, gaps) {
+  const identity = (box) => box;
+  const edges = [...diagram.internalEdges, ...messageFlows];
+  for (const { task, left, right: rightGateway, entry, exit, main, scope, members, units, lanes, measureExcess } of loops) {
+    const route = (edge) => state.routes.get(edge) ?? edge.points ?? [];
+    const mainPath = simplifyRoute(route(main));
+    if (task.parts.length !== 1 || mainPath.length !== 2 ||
+        mainPath[0].y !== mainPath[1].y || mainPath[0].x >= mainPath[1].x) continue;
+
+    const { figure, lane } = task;
+    const old = state.boxes.get(figure);
+    const merge = state.boxes.get(left.figure);
+    const split = state.boxes.get(rightGateway.figure);
+    const x = center(merge, 'x');
+    const box = { ...old, x: x - old.width / 2 };
+    const containers = [scope, lane].filter((container) => state.boxes.has(container));
+    if (!validBox(box) || bottom(box) >= merge.y || center(merge, 'y') !== center(split, 'y') ||
+        containers.some((container) => !contains(usableArea(container, state.boxes.get(container)), box)) ||
+        lanes.some((other) => other !== lane && !descendantOf(figure, other) &&
+          !(lane && descendantOf(lane, other)) && intersects(state.boxes.get(other), box))) continue;
+
+    const obstacles = members.filter((member) => member !== figure).map((member) => state.boxes.get(member));
+    const frame = state.boxes.get(scope);
+    for (const note of diagram.notes.annotations) {
+      const bounds = state.boxes.get(note);
+      if (note.scope !== scope && (!frame || intersects(frame, bounds))) obstacles.push(bounds);
+    }
+    if (obstacles.some((other) => intersects(other, box)) ||
+        units.some((unit) => unit !== task && unit.lane === lane &&
+          !hasClearance(box, boundsOf(unit.parts.map((part) => state.boxes.get(part))), gaps))) continue;
+
+    const stationary = edges.filter((edge) => edge !== entry && edge !== exit);
+    if (stationary.some(({ source, target }) => source === figure || target === figure)) continue;
+    const fixed = stationary.map(route);
+    if (fixed.some((points) => points.slice(1).some((point, index) => cutsInterior(points[index], point, box)))) continue;
+
+    const candidate = clone(state);
+    candidate.boxes.set(figure, box);
+    if (measureExcess && measureExcess(candidate, identity) > measureExcess(state, identity)) continue;
+    obstacles.push(box);
+    const bounds = routingBounds(scope, candidate, lanes, identity, obstacles);
+    const routes = routeFlows([
+      { id: exit.id, source: box, target: merge, isDefault: exit.isDefault },
+      { id: entry.id, source: split, target: box, isDefault: entry.isDefault, back: true }
+    ], bounds, obstacles, fixed);
+    if (!routes) continue;
+    const outbound = routes.get(exit.id);
+    const inbound = routes.get(entry.id);
+    if (outbound.length !== 2 || outbound.some((point) => point.x !== x) ||
+        outbound[0].y !== bottom(box) || outbound[1].y !== merge.y || inbound.length !== 3) continue;
+    const before = routeCost([route(exit), route(entry)], fixed);
+    const after = routeCost([outbound, inbound], fixed);
+    if (after[0] > before[0] || after[1] > before[1]) continue;
+
+    candidate.routes.set(entry, inbound);
+    candidate.routes.set(exit, outbound);
+    if (obstructedFlows(diagram.notes, candidate, [entry, exit]).length) continue;
+    state = candidate;
+  }
+  return state;
 }
 
 function newOverlap(state, original, figure, others) {
@@ -725,6 +795,7 @@ export function planAlignment({ root, figures, edges, messageFlows = [], auxilia
   const diagram = indexDiagram(figures, edges, auxiliary);
   const initial = { boxes: new Map(figures.map((figure) => [figure, figure.box])), routes: new Map() };
   const skipped = new Map();
+  const loops = [];
   let reverted = false;
   let state = initial;
   const pools = figures.filter((figure) => figure.kind === 'pool').sort(byId);
@@ -743,6 +814,7 @@ export function planAlignment({ root, figures, edges, messageFlows = [], auxilia
       failures.set(scope, 'collisions');
       return start;
     }
+    loops.push(...(result.loops ?? []));
     return result.state;
   }
 
@@ -769,15 +841,20 @@ export function planAlignment({ root, figures, edges, messageFlows = [], auxilia
       state = routes ? { boxes: state.boxes, routes: new Map([...state.routes, ...routes]) } : initial;
     }
   }
-  const finished = finishAnnotations(diagram, state, initial, messageFlows, gaps);
+  let finished = finishAnnotations(diagram, state, initial, messageFlows, gaps);
   if (!finished) return { ...changes(initial), skipped: [], reason: 'annotations' };
-  const labelGateways = reverted ? [] : figures.filter((figure) => {
-    if (figure.type !== 'bpmn:ExclusiveGateway') return false;
-    for (let scope = figure.scope; scope; scope = scope.kind === 'pool' ? null : scope.scope) {
-      if (failedScopes.has(scope)) return false;
+  function alignedScope(scope) {
+    for (let parent = scope; parent; parent = parent.kind === 'pool' ? null : parent.scope) {
+      if (failedScopes.has(parent)) return false;
     }
     return true;
-  });
+  }
+  // Evaluate the loop against final positions and routes, including collaboration and annotations.
+  if (!reverted && loops.length) {
+    finished = preserveCompactLoops(finished, loops.filter(({ scope }) => alignedScope(scope)), diagram, messageFlows, gaps);
+  }
+  const labelGateways = reverted ? [] : figures.filter((figure) =>
+    figure.type === 'bpmn:ExclusiveGateway' && alignedScope(figure.scope));
   return { ...changes(finished), labelGateways, skipped: [...skipped].map(([scope, reason]) => ({ scope, reason })) };
 }
 

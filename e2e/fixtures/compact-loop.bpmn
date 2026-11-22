@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions" targetNamespace="https://example.org/bpmn">
+  <bpmn:collaboration id="Collaboration">
+    <bpmn:participant id="Pool" processRef="Process" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process" isExecutable="false">
+    <bpmn:sequenceFlow id="CloseLoop" sourceRef="Rework" targetRef="Verify" />
+    <bpmn:sequenceFlow id="Enter" sourceRef="Prepare" targetRef="Verify" />
+    <bpmn:sequenceFlow id="Across" sourceRef="Verify" targetRef="Split" />
+    <bpmn:sequenceFlow id="Proceed" sourceRef="Split" targetRef="Continue" />
+    <bpmn:exclusiveGateway id="Split">
+      <bpmn:incoming>Across</bpmn:incoming>
+      <bpmn:outgoing>Proceed</bpmn:outgoing>
+      <bpmn:outgoing>BackToTask</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Continue">
+      <bpmn:incoming>Proceed</bpmn:incoming>
+    </bpmn:task>
+    <bpmn:task id="Prepare">
+      <bpmn:outgoing>Enter</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Verify">
+      <bpmn:incoming>CloseLoop</bpmn:incoming>
+      <bpmn:incoming>Enter</bpmn:incoming>
+      <bpmn:outgoing>Across</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Rework">
+      <bpmn:incoming>BackToTask</bpmn:incoming>
+      <bpmn:outgoing>CloseLoop</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="BackToTask" sourceRef="Split" targetRef="Rework" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="Collaboration">
+      <bpmndi:BPMNShape id="Pool_di" bpmnElement="Pool" isHorizontal="true">
+        <dc:Bounds x="580" y="1810" width="3150" height="1680" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Split_di" bpmnElement="Split">
+        <dc:Bounds x="1435" y="2085" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Continue_di" bpmnElement="Continue">
+        <dc:Bounds x="1600" y="2070" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Prepare_di" bpmnElement="Prepare">
+        <dc:Bounds x="1050" y="2070" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Verify_di" bpmnElement="Verify">
+        <dc:Bounds x="1265" y="2085" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Rework_di" bpmnElement="Rework">
+        <dc:Bounds x="1240" y="1950" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="CloseLoop_di" bpmnElement="CloseLoop">
+        <di:waypoint x="1290" y="2030" />
+        <di:waypoint x="1290" y="2085" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Enter_di" bpmnElement="Enter">
+        <di:waypoint x="1150" y="2110" />
+        <di:waypoint x="1265" y="2110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Across_di" bpmnElement="Across">
+        <di:waypoint x="1315" y="2110" />
+        <di:waypoint x="1435" y="2110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Proceed_di" bpmnElement="Proceed">
+        <di:waypoint x="1485" y="2110" />
+        <di:waypoint x="1600" y="2110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BackToTask_di" bpmnElement="BackToTask">
+        <di:waypoint x="1460" y="2085" />
+        <di:waypoint x="1460" y="1990" />
+        <di:waypoint x="1340" y="1990" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

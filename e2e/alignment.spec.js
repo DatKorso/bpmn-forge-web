@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 const fixture = fileURLToPath(new URL('./fixtures/tight-pool.bpmn', import.meta.url));
+const loopFixture = fileURLToPath(new URL('./fixtures/compact-loop.bpmn', import.meta.url));
 
 async function openDiagram(page, path, filename) {
   const [chooser] = await Promise.all([
@@ -118,6 +119,48 @@ test('aligns an imported BPMN, restores it through undo and redo, and preserves 
   await exported.saveAs(exportedPath);
   await openDiagram(page, exportedPath, 'aligned.bpmn');
   expect(await readDiagram(page, await downloadDiagram(page))).toEqual(aligned);
+});
+
+test('preserves a compact gateway loop through alignment, history, and reopening', async ({ page }, testInfo) => {
+  const align = page.getByRole('button', { name: 'Выровнять схему' });
+  const undo = page.getByRole('button', { name: 'Отменить', exact: true });
+  const redo = page.getByRole('button', { name: 'Повторить', exact: true });
+  const summary = page.locator('#alignment-summary');
+  const snapshot = async () => readDiagram(page, await downloadDiagram(page));
+
+  await page.goto('/');
+  await openDiagram(page, loopFixture, 'compact-loop.bpmn');
+  const original = await snapshot();
+  await page.getByRole('button', { name: 'Отступы' }).click();
+  await page.getByRole('checkbox', { name: 'Единый отступ' }).check();
+  await align.click();
+  await expect(summary).toHaveText('Выравнивание выполнено');
+
+  const aligned = await snapshot();
+  const point = (x, y) => ({ x, y });
+  expect(aligned.shapes.Pool).toEqual(original.shapes.Pool);
+  expect(aligned.shapes.Rework).toEqual({ x: 1210, y: 1950, width: 100, height: 80 });
+  expect(aligned.routes).toEqual({
+    Across: [point(1285, 2150), point(1365, 2150)],
+    BackToTask: [point(1390, 2125), point(1390, 1990), point(1310, 1990)],
+    CloseLoop: [point(1260, 2030), point(1260, 2125)],
+    Enter: [point(1150, 2150), point(1235, 2150)],
+    Proceed: [point(1415, 2150), point(1500, 2150)]
+  });
+  expect(aligned.flows).toEqual(original.flows);
+
+  await undo.click();
+  expect(await snapshot()).toEqual(original);
+  await redo.click();
+  expect(await snapshot()).toEqual(aligned);
+  await align.click();
+  await expect(summary).toHaveText('Изменений нет');
+
+  const exported = await downloadDiagram(page);
+  const exportedPath = testInfo.outputPath('compact-loop-aligned.bpmn');
+  await exported.saveAs(exportedPath);
+  await openDiagram(page, exportedPath, 'compact-loop-aligned.bpmn');
+  expect(await snapshot()).toEqual(aligned);
 });
 
 test('opens BPMN from the empty canvas and reports spacing errors below the fields', async ({ page }, testInfo) => {

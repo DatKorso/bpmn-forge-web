@@ -16,6 +16,12 @@ export function compareCosts(a, b) {
 }
 
 function interaction([a, b], [c, d], includeStart = false) {
+  if (a.x !== b.x && a.y !== b.y || c.x !== d.x && c.y !== d.y) {
+    // Imported connections can be diagonal. A new orthogonal segment can
+    // cross one, but cannot share any of its length.
+    const side = (p, q, r) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+    return [Number(side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0), 0];
+  }
   const h = horizontal(a, b);
   if (h === horizontal(c, d)) {
     const axis = h ? 'x' : 'y';
@@ -59,9 +65,9 @@ export function simplifyRoute(points) {
   return result;
 }
 
-export function routeCost(routes) {
+export function routeCost(routes, fixed = []) {
   const cost = [0, 0, 0, 0];
-  const seen = [];
+  const seen = fixed.flatMap((points) => segments(simplifyRoute(points)));
   for (const points of routes) {
     const path = segments(simplifyRoute(points));
     for (const segment of path) {
@@ -330,9 +336,9 @@ export function routeFlow(flow, bounds, obstacles, occupied = []) {
   return winner?.points ?? null;
 }
 
-export function routeFlows(flows, bounds, obstacles) {
+export function routeFlows(flows, bounds, obstacles, fixed = []) {
   const routes = new Map();
-  const occupied = [];
+  const occupied = fixed.flatMap((points) => segments(simplifyRoute(points)));
   const straight = new Set(flows.filter((flow) => !flow.back && hasStraightRoute(flow, bounds, obstacles)));
   // Reserve clear straight paths before off-row branches can occupy their ports.
   const ordered = [...flows].sort((a, b) => Number(!!a.back) - Number(!!b.back) ||

@@ -188,6 +188,31 @@ export function forwardFlows(units, flows) {
   return forward;
 }
 
+export function compactLoops(units, incoming, outgoing, hasLanes) {
+  const byFigure = new Map(units.map((unit) => [unit.figure, unit]));
+  const gateway = (unit) => unit?.shape.type === 'bpmn:ExclusiveGateway';
+  const loops = [];
+  for (const task of units) {
+    if (!/^bpmn:\w*Task$/.test(task.shape.type) || hasLanes && !task.lane) continue;
+    const inputs = incoming.get(task.figure);
+    const outputs = outgoing.get(task.figure);
+    if (inputs?.length !== 1 || outputs?.length !== 1) continue;
+    const [entry] = inputs;
+    const [exit] = outputs;
+    const left = byFigure.get(exit.target);
+    const right = byFigure.get(entry.source);
+    if (!gateway(left) || !gateway(right) || left.lane !== task.lane || right.lane !== task.lane) continue;
+    const x = center(left.shape, 'x');
+    const y = center(left.shape, 'y');
+    if (center(right.shape, 'x') <= x || center(right.shape, 'y') !== y ||
+        task.shape.y + task.shape.height > left.shape.y ||
+        Math.abs(center(task.shape, 'x') - x) > TOLERANCE) continue;
+    const main = outgoing.get(left.figure)?.find(({ target }) => target === right.figure);
+    if (main) loops.push({ task, left, right, entry, exit, main });
+  }
+  return loops;
+}
+
 function columnOrder(groups, edges, preferOriginal = true) {
   const incoming = new Map([...groups].map((group) => [group, 0]));
   const outgoing = new Map([...groups].map((group) => [group, []]));

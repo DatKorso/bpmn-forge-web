@@ -46,11 +46,97 @@ function apply(plan) {
   for (const [edge, points] of plan.routes) edge.points = points;
 }
 
+const loopSpacing = { x: 80, y: 80, maxX: 80, maxY: 80 };
+
+function compactLoopFixture(taskX = 1240) {
+  const d = diagram();
+  const pool = d.add('Pool', box(580, 1810, 3150, 1680), { kind: 'pool', horizontal: true, header: 30 });
+  const gateway = 'bpmn:ExclusiveGateway';
+  const split = d.add('Split', box(1435, 2085, 50, 50), { scope: pool, type: gateway });
+  const next = d.add('Continue', box(1600, 2070, 100, 80), { scope: pool });
+  const previous = d.add('Prepare', box(1050, 2070, 100, 80), { scope: pool });
+  const merge = d.add('Verify', box(1265, 2085, 50, 50), { scope: pool, type: gateway });
+  const task = d.add('Rework', box(taskX, 1950, 100, 80), { scope: pool });
+  function flow(id, source, target, coordinates) {
+    const edge = d.connect(source, target);
+    edge.id = id;
+    edge.points = coordinates.map(([x, y]) => point(x, y));
+    return edge;
+  }
+  const exit = flow('CloseLoop', task, merge, taskX === 1240
+    ? [[1290, 2030], [1290, 2085]]
+    : [[taskX + 50, 2030], [taskX + 50, 2050], [1290, 2050], [1290, 2085]]);
+  const incoming = flow('Enter', previous, merge, [[1150, 2110], [1265, 2110]]);
+  const main = flow('Across', merge, split, [[1315, 2110], [1435, 2110]]);
+  const outgoing = flow('Proceed', split, next, [[1485, 2110], [1600, 2110]]);
+  const entry = flow('BackToTask', split, task, taskX === 1240
+    ? [[1460, 2085], [1460, 1990], [1340, 1990]] : [[1460, 2085], [1460, 2030]]);
+  return { d, pool, task, merge, split, previous, next, exit, entry, main, incoming, outgoing };
+}
+
+function assertLoopBaseline(plan, fixture) {
+  const { pool, merge, split, previous, next, main, incoming, outgoing } = fixture;
+  assert.deepEqual(plan.skipped, []);
+  assert.deepEqual(finalBox(plan, pool), pool.box);
+  assert.deepEqual(finalBox(plan, merge), box(1235, 2125, 50, 50));
+  assert.deepEqual(finalBox(plan, split), box(1365, 2125, 50, 50));
+  assert.deepEqual(finalBox(plan, previous), box(1050, 2110, 100, 80));
+  assert.deepEqual(finalBox(plan, next), box(1500, 2110, 100, 80));
+  assert.deepEqual(plan.routes.get(incoming), [point(1150, 2150), point(1235, 2150)]);
+  assert.deepEqual(plan.routes.get(main), [point(1285, 2150), point(1365, 2150)]);
+  assert.deepEqual(plan.routes.get(outgoing), [point(1415, 2150), point(1500, 2150)]);
+}
+
+test('keeps the upper task above the left gateway and reroutes only the two loop legs', () => {
+  const fixture = compactLoopFixture();
+  const { d, task, exit, entry } = fixture;
+  const plan = planAlignment(d, loopSpacing);
+  assertLoopBaseline(plan, fixture);
+  assert.deepEqual(finalBox(plan, task), box(1210, 1950, 100, 80));
+  assert.deepEqual(plan.routes.get(exit), [point(1260, 2030), point(1260, 2125)]);
+  assert.deepEqual(plan.routes.get(entry), [point(1390, 2125), point(1390, 1990), point(1310, 1990)]);
+
+  apply(plan);
+  const repeated = planAlignment(d, loopSpacing);
+  assert.deepEqual(repeated.skipped, []);
+  assert.equal(repeated.boxes.size, 0);
+  assert.deepEqual(repeated.routes, plan.routes);
+});
+
+for (const [reason, bounds, options] of [
+  ['an obstacle occupies the compact task position', box(1180, 1930, 40, 40),
+    { kind: 'artifact', type: 'bpmn:TextAnnotation' }],
+  ['the compact task would leave too small a gap', box(1100, 1970, 40, 40), {}]
+]) {
+  test('keeps the normal loop layout when ' + reason, () => {
+    const fixture = compactLoopFixture();
+    const { d, pool, task, entry, exit } = fixture;
+    const obstacle = d.add('Obstacle', bounds, { scope: pool, ...options });
+    const plan = planAlignment(d, loopSpacing);
+    assertLoopBaseline(plan, fixture);
+    assert.deepEqual(finalBox(plan, obstacle), bounds);
+    assert.deepEqual(finalBox(plan, task), box(1500, 1950, 100, 80));
+    assert.deepEqual(plan.routes.get(exit), [point(1550, 1950), point(1550, 1942), point(1260, 1942), point(1260, 2125)]);
+    assert.deepEqual(plan.routes.get(entry), [point(1390, 2125), point(1390, 1990), point(1500, 1990)]);
+  });
+}
+
+test('matches the previous bounds and routes for a loop drawn outside the left column', () => {
+  const fixture = compactLoopFixture(1410);
+  const { d, task, exit, entry } = fixture;
+  const plan = planAlignment(d, loopSpacing);
+  assertLoopBaseline(plan, fixture);
+  assert.deepEqual(finalBox(plan, task), box(1340, 1950, 100, 80));
+  assert.deepEqual(plan.routes.get(exit), [point(1340, 1990), point(1260, 1990), point(1260, 2125)]);
+  assert.deepEqual(plan.routes.get(entry), [point(1390, 2125), point(1390, 2030)]);
+});
+
 test('distinguishes interior crossings, shared lengths and connections meeting at an endpoint', () => {
   const first = [point(0, 0), point(20, 0)];
   assert.deepEqual(routeCost([first, [point(10, -10), point(10, 10)]]), [1, 0, 0, 40]);
   assert.deepEqual(routeCost([first, [point(10, 0), point(30, 0)]]), [0, 10, 0, 40]);
   assert.deepEqual(routeCost([first, [point(20, 0), point(20, 10)]]), [0, 0, 0, 30]);
+  assert.deepEqual(routeCost([first], [[point(0, -10), point(20, 10)]]), [1, 0, 0, 20]);
 });
 
 test('routes around an obstacle and gives a self-loop separate entry and exit points', () => {
