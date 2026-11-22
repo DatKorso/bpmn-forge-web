@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="Definitions" targetNamespace="https://example.org/bpmn">
+  <bpmn:collaboration id="Collab">
+    <bpmn:participant id="Sales" name="Продажи" processRef="Process" />
+    <bpmn:participant id="Warehouse" name="Склад" processRef="Fulfilment" />
+    <bpmn:participant id="Carrier" name="Перевозчик" />
+    <bpmn:messageFlow id="Order" sourceRef="Dispatch" targetRef="Receive" />
+    <bpmn:messageFlow id="Pickup" sourceRef="Pack" targetRef="Carrier" />
+    <bpmn:messageFlow id="Tracking" sourceRef="Carrier" targetRef="Confirm" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process" isExecutable="false">
+    <bpmn:startEvent id="Placed" />
+    <bpmn:task id="Record" name="Проверить заказ" />
+    <bpmn:sendTask id="Dispatch" name="Передать на склад" />
+    <bpmn:endEvent id="Registered" />
+    <bpmn:sequenceFlow id="ToRecord" sourceRef="Placed" targetRef="Record" />
+    <bpmn:sequenceFlow id="ToDispatch" sourceRef="Record" targetRef="Dispatch" />
+    <bpmn:sequenceFlow id="Done" sourceRef="Dispatch" targetRef="Registered" />
+  </bpmn:process>
+  <bpmn:process id="Fulfilment">
+    <bpmn:receiveTask id="Receive" name="Принять заказ" />
+    <bpmn:task id="Pack" name="Собрать заказ" />
+    <bpmn:receiveTask id="Confirm" name="Записать трек-номер" />
+    <bpmn:sequenceFlow id="ToPack" sourceRef="Receive" targetRef="Pack" />
+    <bpmn:sequenceFlow id="PendingTracking" sourceRef="Pack" targetRef="Confirm" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="Collab">
+      <bpmndi:BPMNShape id="Sales_di" bpmnElement="Sales" isHorizontal="true">
+        <dc:Bounds x="70" y="40" width="820" height="235" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Warehouse_di" bpmnElement="Warehouse" isHorizontal="true">
+        <dc:Bounds x="115" y="375" width="820" height="255" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Carrier_di" bpmnElement="Carrier" isHorizontal="true">
+        <dc:Bounds x="240" y="745" width="490" height="110" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Placed_di" bpmnElement="Placed">
+        <dc:Bounds x="170" y="125" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Record_di" bpmnElement="Record">
+        <dc:Bounds x="285" y="92" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Dispatch_di" bpmnElement="Dispatch">
+        <dc:Bounds x="510" y="157" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Registered_di" bpmnElement="Registered">
+        <dc:Bounds x="745" y="149" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Receive_di" bpmnElement="Receive">
+        <dc:Bounds x="238" y="490" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Pack_di" bpmnElement="Pack">
+        <dc:Bounds x="481" y="458" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Confirm_di" bpmnElement="Confirm">
+        <dc:Bounds x="715" y="522" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="ToRecord_di" bpmnElement="ToRecord">
+        <di:waypoint x="206" y="143" />
+        <di:waypoint x="250" y="143" />
+        <di:waypoint x="250" y="132" />
+        <di:waypoint x="285" y="132" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="ToDispatch_di" bpmnElement="ToDispatch">
+        <di:waypoint x="385" y="132" />
+        <di:waypoint x="445" y="132" />
+        <di:waypoint x="445" y="197" />
+        <di:waypoint x="510" y="197" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Done_di" bpmnElement="Done">
+        <di:waypoint x="610" y="197" />
+        <di:waypoint x="664" y="197" />
+        <di:waypoint x="664" y="167" />
+        <di:waypoint x="745" y="167" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="ToPack_di" bpmnElement="ToPack">
+        <di:waypoint x="338" y="530" />
+        <di:waypoint x="400" y="530" />
+        <di:waypoint x="400" y="498" />
+        <di:waypoint x="481" y="498" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="PendingTracking_di" bpmnElement="PendingTracking">
+        <di:waypoint x="581" y="498" />
+        <di:waypoint x="650" y="498" />
+        <di:waypoint x="650" y="562" />
+        <di:waypoint x="715" y="562" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Order_di" bpmnElement="Order">
+        <di:waypoint x="560" y="237" />
+        <di:waypoint x="560" y="325" />
+        <di:waypoint x="288" y="325" />
+        <di:waypoint x="288" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Pickup_di" bpmnElement="Pickup">
+        <di:waypoint x="531" y="538" />
+        <di:waypoint x="531" y="745" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Tracking_di" bpmnElement="Tracking">
+        <di:waypoint x="675" y="745" />
+        <di:waypoint x="675" y="685" />
+        <di:waypoint x="765" y="685" />
+        <di:waypoint x="765" y="602" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

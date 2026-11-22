@@ -6,7 +6,7 @@ import { intersects } from '../src/layout.js';
 
 test('generated layouts preserve lane membership, connections, clearance and repeat-run geometry', () => {
   for (let seed = 1; seed <= 32; seed++) {
-    const diagram = generatedProcess(6 + seed % 14, seed, true);
+    const diagram = generatedProcess(6 + seed % 14, seed, true, seed % 2 ? 0 : 6);
     const [lane, ...nodes] = diagram.figures;
     const gaps = { x: 20 + seed % 5 * 10, y: 20 + seed % 3 * 10 };
     const relation = (edge) => [edge.id, edge.source.id, edge.target.id];

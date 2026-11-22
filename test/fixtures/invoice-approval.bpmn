@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="Definitions" targetNamespace="https://example.org/bpmn">
+  <bpmn:collaboration id="Collab">
+    <bpmn:participant id="Pool" name="Утверждение счетов" processRef="Process" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process" isExecutable="false">
+    <bpmn:laneSet id="Lanes">
+    <bpmn:lane id="Accounting" name="Бухгалтерия">
+      <bpmn:flowNodeRef>Received</bpmn:flowNodeRef>
+      <bpmn:flowNodeRef>Register</bpmn:flowNodeRef>
+      <bpmn:flowNodeRef>Notify</bpmn:flowNodeRef>
+      <bpmn:flowNodeRef>Paid</bpmn:flowNodeRef>
+      <bpmn:flowNodeRef>Remind</bpmn:flowNodeRef>
+    </bpmn:lane>
+    <bpmn:lane id="Approvers" name="Руководитель">
+      <bpmn:flowNodeRef>Review</bpmn:flowNodeRef>
+      <bpmn:flowNodeRef>Deadline</bpmn:flowNodeRef>
+      <bpmn:flowNodeRef>Decision</bpmn:flowNodeRef>
+      <bpmn:flowNodeRef>Reject</bpmn:flowNodeRef>
+    </bpmn:lane>
+  </bpmn:laneSet>
+    <bpmn:startEvent id="Received" />
+    <bpmn:task id="Register" name="Зарегистрировать счёт" />
+    <bpmn:userTask id="Review" name="Проверить счёт" />
+    <bpmn:boundaryEvent id="Deadline" attachedToRef="Review" cancelActivity="false">
+    <bpmn:timerEventDefinition id="DeadlineDefinition">
+      <bpmn:timeDuration>P2D</bpmn:timeDuration>
+    </bpmn:timerEventDefinition>
+  </bpmn:boundaryEvent>
+    <bpmn:exclusiveGateway id="Decision" default="Approved" />
+    <bpmn:task id="Notify" name="Передать в оплату" />
+    <bpmn:sendTask id="Remind" name="Напомнить о согласовании" />
+    <bpmn:endEvent id="Paid" />
+    <bpmn:endEvent id="Reject" name="Счёт отклонён" />
+    <bpmn:sequenceFlow id="RegisterInvoice" sourceRef="Received" targetRef="Register" />
+    <bpmn:sequenceFlow id="ForReview" sourceRef="Register" targetRef="Review" />
+    <bpmn:sequenceFlow id="Reviewed" sourceRef="Review" targetRef="Decision" />
+    <bpmn:sequenceFlow id="Approved" sourceRef="Decision" targetRef="Notify" />
+    <bpmn:sequenceFlow id="Declined" sourceRef="Decision" targetRef="Reject" />
+    <bpmn:sequenceFlow id="Pay" sourceRef="Notify" targetRef="Paid" />
+    <bpmn:sequenceFlow id="Late" sourceRef="Deadline" targetRef="Remind" />
+    <bpmn:textAnnotation id="Policy">
+    <bpmn:text>Сверить сумму и реквизиты</bpmn:text>
+  </bpmn:textAnnotation>
+    <bpmn:association id="PolicyLink" sourceRef="Register" targetRef="Policy" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="Collab">
+      <bpmndi:BPMNShape id="Pool_di" bpmnElement="Pool" isHorizontal="true">
+        <dc:Bounds x="0" y="0" width="1210" height="640" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Accounting_di" bpmnElement="Accounting" isHorizontal="true">
+        <dc:Bounds x="30" y="0" width="1180" height="300" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Approvers_di" bpmnElement="Approvers" isHorizontal="true">
+        <dc:Bounds x="30" y="300" width="1180" height="340" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Received_di" bpmnElement="Received">
+        <dc:Bounds x="90" y="155" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Register_di" bpmnElement="Register">
+        <dc:Bounds x="195" y="131" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Review_di" bpmnElement="Review">
+        <dc:Bounds x="399" y="393" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Deadline_di" bpmnElement="Deadline">
+        <dc:Bounds x="454" y="455" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Decision_di" bpmnElement="Decision">
+        <dc:Bounds x="602" y="425" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Notify_di" bpmnElement="Notify">
+        <dc:Bounds x="758" y="108" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Paid_di" bpmnElement="Paid">
+        <dc:Bounds x="1050" y="150" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Reject_di" bpmnElement="Reject">
+        <dc:Bounds x="871" y="412" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Remind_di" bpmnElement="Remind">
+        <dc:Bounds x="696" y="224" width="100" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Policy_di" bpmnElement="Policy">
+        <dc:Bounds x="193" y="45" width="155" height="49" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="RegisterInvoice_di" bpmnElement="RegisterInvoice">
+        <di:waypoint x="126" y="173" />
+        <di:waypoint x="195" y="171" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="ForReview_di" bpmnElement="ForReview">
+        <di:waypoint x="295" y="171" />
+        <di:waypoint x="363" y="171" />
+        <di:waypoint x="363" y="433" />
+        <di:waypoint x="399" y="433" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Reviewed_di" bpmnElement="Reviewed">
+        <di:waypoint x="499" y="433" />
+        <di:waypoint x="551" y="433" />
+        <di:waypoint x="551" y="450" />
+        <di:waypoint x="602" y="450" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Approved_di" bpmnElement="Approved">
+        <di:waypoint x="627" y="425" />
+        <di:waypoint x="627" y="148" />
+        <di:waypoint x="758" y="148" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Declined_di" bpmnElement="Declined">
+        <di:waypoint x="652" y="450" />
+        <di:waypoint x="775" y="450" />
+        <di:waypoint x="775" y="430" />
+        <di:waypoint x="871" y="430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Pay_di" bpmnElement="Pay">
+        <di:waypoint x="858" y="148" />
+        <di:waypoint x="950" y="148" />
+        <di:waypoint x="950" y="168" />
+        <di:waypoint x="1050" y="168" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Late_di" bpmnElement="Late">
+        <di:waypoint x="472" y="491" />
+        <di:waypoint x="472" y="520" />
+        <di:waypoint x="746" y="520" />
+        <di:waypoint x="746" y="294" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="PolicyLink_di" bpmnElement="PolicyLink">
+        <di:waypoint x="245" y="131" />
+        <di:waypoint x="245" y="94" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
