@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions" targetNamespace="https://example.org/bpmn">
+  <bpmn:collaboration id="Collaboration">
+    <bpmn:participant id="Pool" name="Заявки" processRef="Process" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process" isExecutable="false">
+    <bpmn:laneSet id="Lanes">
+      <bpmn:lane id="Intake" name="Приём">
+        <bpmn:flowNodeRef>Start</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Review</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Timeout</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Resolution" name="Решение">
+        <bpmn:flowNodeRef>Decision</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start">
+      <bpmn:outgoing>StartToReview</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Review" name="Проверить заявку">
+      <bpmn:incoming>StartToReview</bpmn:incoming>
+      <bpmn:outgoing>ReviewToDecision</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:boundaryEvent id="Timeout" attachedToRef="Review">
+      <bpmn:outgoing>TimeoutToEnd</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="Timer">
+        <bpmn:timeDuration>PT1H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:exclusiveGateway id="Decision" name="Заявка принята?">
+      <bpmn:incoming>ReviewToDecision</bpmn:incoming>
+      <bpmn:outgoing>DecisionToEnd</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End">
+      <bpmn:incoming>DecisionToEnd</bpmn:incoming>
+      <bpmn:incoming>TimeoutToEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="StartToReview" sourceRef="Start" targetRef="Review" />
+    <bpmn:sequenceFlow id="ReviewToDecision" sourceRef="Review" targetRef="Decision" />
+    <bpmn:sequenceFlow id="DecisionToEnd" sourceRef="Decision" targetRef="End" />
+    <bpmn:sequenceFlow id="TimeoutToEnd" sourceRef="Timeout" targetRef="End" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="Collaboration">
+      <bpmndi:BPMNShape id="Pool_di" bpmnElement="Pool" isHorizontal="true">
+        <dc:Bounds x="40" y="40" width="380" height="260" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Intake_di" bpmnElement="Intake" isHorizontal="true">
+        <dc:Bounds x="70" y="40" width="350" height="130" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Resolution_di" bpmnElement="Resolution" isHorizontal="true">
+        <dc:Bounds x="70" y="170" width="350" height="130" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_di" bpmnElement="Start">
+        <dc:Bounds x="108" y="64" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Review_di" bpmnElement="Review">
+        <dc:Bounds x="156" y="66" width="100" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Timeout_di" bpmnElement="Timeout">
+        <dc:Bounds x="213" y="118" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Decision_di" bpmnElement="Decision">
+        <dc:Bounds x="267" y="190" width="51" height="51" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="251" y="247" width="83" height="28" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_di" bpmnElement="End">
+        <dc:Bounds x="340" y="228" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="StartToReview_di" bpmnElement="StartToReview">
+        <di:waypoint x="144" y="82" />
+        <di:waypoint x="156" y="101" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="ReviewToDecision_di" bpmnElement="ReviewToDecision">
+        <di:waypoint x="256" y="101" />
+        <di:waypoint x="292.5" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DecisionToEnd_di" bpmnElement="DecisionToEnd">
+        <di:waypoint x="318" y="215.5" />
+        <di:waypoint x="340" y="246" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="TimeoutToEnd_di" bpmnElement="TimeoutToEnd">
+        <di:waypoint x="249" y="136" />
+        <di:waypoint x="358" y="228" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
