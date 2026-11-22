@@ -7,7 +7,7 @@ const generatorPath = 'scripts/build-metadata.js';
 const repository = 'https://github.com/DatKorso/bpmn-forge-web';
 const historyLimit = 20;
 
-function formatVersion([major, minor, patch]) {
+export function formatVersion([major, minor, patch]) {
   return `${major}.${String(minor).padStart(2, '0')}.${patch}`;
 }
 

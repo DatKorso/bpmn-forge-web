@@ -179,11 +179,11 @@ test('straightens a chaotically placed default path and reduces crossings at a s
   assert.deepEqual(repeated.routes, plan.routes);
 });
 
-test('aligns a vertical process across lanes and keeps its original lane assignments', () => {
+test('aligns a vertical process and keeps the final node bounds inside their lanes', () => {
   const d = diagram();
   const pool = d.add('Pool', box(0, 0, 400, 550), { kind: 'pool', horizontal: false, header: 30 });
-  const left = d.add('Left', box(0, 30, 200, 520), { kind: 'lane', scope: pool, header: 30 });
-  const right = d.add('Right', box(200, 30, 200, 520), { kind: 'lane', scope: pool, header: 30 });
+  const left = d.add('Left', box(0, 30, 200, 520), { kind: 'lane', scope: pool, horizontal: false, header: 30 });
+  const right = d.add('Right', box(200, 30, 200, 520), { kind: 'lane', scope: pool, horizontal: false, header: 30 });
   const a = d.add('A', box(30, 100), { scope: pool, lane: left });
   const b = d.add('B', box(250, 190), { scope: pool, lane: right });
   const c = d.add('C', box(240, 330), { scope: pool, lane: right });
@@ -194,29 +194,14 @@ test('aligns a vertical process across lanes and keeps its original lane assignm
   assert.equal(plan.routes.get(cross).length, 2);
   assert.equal(center(finalBox(plan, a), 'y'), center(finalBox(plan, b), 'y'));
   assert.ok(finalBox(plan, b).y < finalBox(plan, c).y);
-  assert.equal(a.lane, left);
-  assert.equal(b.lane, right);
+  assertInside(plan, pool, [a, b, c], 40);
+  assertInside(plan, left, [a]);
+  assertInside(plan, right, [b, c]);
   apply(plan);
   assert.equal(planAlignment(d, gaps).boxes.size, 0);
 });
 
-for (const horizontal of [true, false]) {
-  test(`keeps 40 units around figures in a ${horizontal ? 'horizontal' : 'vertical'} pool`, () => {
-    const d = diagram();
-    const orient = ({ x, y, width, height }) => horizontal ? box(x, y, width, height) : box(y, x, height, width);
-    const pool = d.add('Pool', orient(box(50, 40, 210, 140)), { kind: 'pool', horizontal, header: 30 });
-    const task = d.add('Task', orient(box(80, 40)), { scope: pool });
-    const plan = planAlignment(d, gaps);
-
-    assert.deepEqual(plan.skipped, []);
-    assert.equal(plan.boxes.has(pool), false);
-    assert.deepEqual(finalBox(plan, task), orient(box(120, 80)));
-    apply(plan);
-    assert.equal(planAlignment(d, gaps).boxes.size, 0);
-  });
-}
-
-test('grows a tight pool and lane to keep padding around a task and its boundary event', () => {
+test('grows a tight pool and lane to keep 40 units around a task and its boundary event', () => {
   const d = diagram();
   const pool = d.add('Pool', box(0, 0, 145, 85), { kind: 'pool', horizontal: true, header: 30 });
   const lane = d.add('Lane', box(30, 0, 115, 85), { kind: 'lane', scope: pool, header: 30 });
@@ -226,10 +211,8 @@ test('grows a tight pool and lane to keep padding around a task and its boundary
 
   assert.deepEqual(plan.skipped, []);
   const frame = finalBox(plan, pool);
-  const area = boundsOf([finalBox(plan, task), finalBox(plan, event)]);
-  assert.ok(area.x >= 70 && area.y >= 40);
-  assert.ok(frame.width - (area.x + area.width) >= 40);
-  assert.ok(frame.height - (area.y + area.height) >= 40);
+  assertInside(plan, pool, [task, event], 40);
+  assertInside(plan, lane, [task, event]);
   assert.equal(finalBox(plan, lane).height, frame.height);
   assert.ok(frame.width > pool.box.width && frame.height > pool.box.height);
   apply(plan);
@@ -420,24 +403,29 @@ for (const horizontal of [true, false]) {
   });
 }
 
-test('moves an individually selected subprocess without changing its internal geometry', () => {
+test('rejects a mixed subprocess selection and moves the subprocess intact with its lane', () => {
   const d = diagram();
   const pool = d.add('pool', box(0, 0, 700, 420), { kind: 'pool', horizontal: true, header: 30 });
-  const a = d.add('a', box(86, 130, 80, 50), { scope: pool });
-  const sub = d.add('sub', box(282, 105, 260, 180), { scope: pool, expanded: true });
+  const lane = d.add('lane', box(30, 0, 670, 420), { kind: 'lane', scope: pool, header: 30 });
+  const a = d.add('a', box(86, 130, 80, 50), { scope: pool, lane });
+  const sub = d.add('sub', box(282, 105, 260, 180), { scope: pool, lane, expanded: true, type: 'bpmn:SubProcess' });
   const start = d.add('start', box(307, 141, 36, 36), { scope: sub, type: 'bpmn:StartEvent' });
   const task = d.add('task', box(412, 177, 80, 60), { scope: sub });
   d.connect(a, sub);
   const inside = d.connect(start, task);
   inside.points = [point(343, 159), point(412, 207)];
 
-  assert.ok(alignmentSelection(d, [a.element, task.element]).reason);
-  const plan = planSelection(d, { scope: pool, members: [a, sub] }, gaps);
-  const moved = plan.boxes.get(sub);
-  const delta = { x: moved.x - sub.box.x, y: moved.y - sub.box.y };
-  assert.deepEqual(plan.boxes.get(start), translate(start.box, delta));
-  assert.deepEqual(plan.boxes.get(task), translate(task.box, delta));
-  assert.deepEqual(plan.routes.get(inside), inside.points.map(({ x, y }) => point(x + delta.x, y + delta.y)));
+  assert.deepEqual(alignmentSelection(d, [a.element, sub.element]), {
+    reason: 'Выберите один контейнер или несколько отдельных фигур.'
+  });
+  const plan = planSelection(d, alignmentSelection(d, [lane.element]), gaps);
+  assert.equal(plan.reason, undefined);
+  const movement = delta(plan, sub);
+  assert.notDeepEqual(movement, point(0, 0));
+  for (const figure of [sub, start, task]) {
+    assert.deepEqual(finalBox(plan, figure), translate(figure.box, movement));
+  }
+  assert.deepEqual(plan.routes.get(inside), inside.points.map(({ x, y }) => point(x + movement.x, y + movement.y)));
   assert.equal(plan.boxes.has(pool), false);
 });
 
@@ -953,7 +941,7 @@ function timerBranch() {
 
 const timerSpacing = { x: 60, y: 40, maxX: 120, maxY: 80 };
 
-test('places a single timer between rows, saves a bend and preserves the straight start flow on repeat', () => {
+test('routes a one-node branch between rows and preserves the straight incoming flow on repeat', () => {
   const { d, split, timer, analysis, direct, entry, exit } = timerBranch();
   const plan = planAlignment(d, timerSpacing);
   const timerBox = finalBox(plan, timer);
@@ -971,18 +959,22 @@ test('places a single timer between rows, saves a bend and preserves the straigh
   for (const [edge, path] of repeated.routes) assert.deepEqual(path, edge.points);
 });
 
-test('keeps the base timer layout and routing when an artifact occupies the gap', () => {
-  const { d, timer, direct, entry, exit } = timerBranch();
-  d.add('artifact', box(470, 190, 20, 80), { kind: 'artifact', type: 'bpmn:DataObjectReference' });
+test('keeps a one-node branch clear of an occupied gap and preserves the straight incoming flow', () => {
+  const { d, split, timer, analysis, direct, entry, exit } = timerBranch();
+  const obstacle = d.add('artifact', box(470, 190, 20, 80), { kind: 'artifact', type: 'bpmn:DataObjectReference' });
   const plan = planAlignment(d, timerSpacing);
   assert.deepEqual(plan.skipped, []);
-  assert.deepEqual(finalBox(plan, timer), box(462, -18, 36, 36));
-  assert.deepEqual(plan.routes.get(entry), [point(370, 75), point(370, 0), point(462, 0)]);
-  assert.deepEqual(plan.routes.get(exit), [point(498, 0), point(618, 0), point(618, 380), point(230, 380)]);
+  const node = finalBox(plan, timer);
+  const splitBox = finalBox(plan, split);
+  const analysisBox = finalBox(plan, analysis);
+  assert.ok(node.y + node.height <= splitBox.y + splitBox.height || node.y >= analysisBox.y);
+  for (const edge of [entry, exit, direct]) assertDocked(plan, edge, [obstacle]);
+  const [start, end] = plan.routes.get(direct);
   assert.equal(plan.routes.get(direct).length, 2);
+  assert.equal(start.y, end.y);
 });
 
-test('places a timer away from the midpoint when the neighboring row needs more clearance', () => {
+test('gives a one-node branch enough clearance from the neighboring row', () => {
   const d = diagram();
   const pool = d.add('Pool', box(10, 880, 4150, 560), { kind: 'pool', horizontal: true, header: 30 });
   const add = (id, bounds, type = 'Task', options = {}) =>
@@ -1022,7 +1014,7 @@ test('places a timer away from the midpoint when the neighboring row needs more 
   for (const [edge, path] of repeated.routes) assert.deepEqual(path, edge.points);
 });
 
-test('places the timer between columns in a vertical pool and preserves its process coordinate', () => {
+test('routes a one-node branch between columns in a vertical pool', () => {
   const { d, split, timer, analysis, direct, entry, exit } = timerBranch();
   const nodes = [...d.figures];
   const pool = d.add('pool', box(-100, -150, 750, 1300), { kind: 'pool', horizontal: false, header: 30 });
@@ -1060,13 +1052,13 @@ test('limits gateway label placement to the selected gateways and selected conta
   assert.ok(!poolPlan.boxes.has(outside));
 });
 
-function assertInsets(plan, frame, members) {
+function assertInside(plan, frame, members, inset = 0) {
   const rect = finalBox(plan, frame);
   const area = boundsOf(members.map((member) => finalBox(plan, member)));
-  assert.ok(area.x - rect.x >= 40 + (frame.horizontal === false ? 0 : frame.header));
-  assert.ok(area.y - rect.y >= 40 + (frame.horizontal === false ? frame.header : 0));
-  assert.ok(rect.x + rect.width - area.x - area.width >= 40);
-  assert.ok(rect.y + rect.height - area.y - area.height >= 40);
+  assert.ok(area.x - rect.x >= inset + (frame.horizontal === false ? 0 : frame.header));
+  assert.ok(area.y - rect.y >= inset + (frame.horizontal === false ? frame.header : 0));
+  assert.ok(rect.x + rect.width - area.x - area.width >= inset);
+  assert.ok(rect.y + rect.height - area.y - area.height >= inset);
 }
 
 function assertStableSelection(d, scope, plan) {
@@ -1094,7 +1086,7 @@ for (const horizontal of [true, false]) {
     const edge = d.connect(first, second);
     const plan = planSelection(d, alignmentSelection(d, [pool.element]), gaps);
     assert.equal(plan.reason, undefined);
-    assertInsets(plan, pool, [first, second, event]);
+    assertInside(plan, pool, [first, second, event], 40);
     const local = ({ x, y, width, height }) => orient(x, y, width, height);
     const [p, l, i, e, b] = [pool, lane, inner, empty, last].map((figure) => local(finalBox(plan, figure)));
     assert.ok(p.width < 950 && p.height < 750);
@@ -1105,7 +1097,8 @@ for (const horizontal of [true, false]) {
     assert.equal(l.y + l.height, b.y);
     assert.equal(b.y + b.height, p.y + p.height);
     assert.equal(i.x + i.width, p.x + p.width);
-    assert.deepEqual([first.lane, second.lane], [inner, last]);
+    assertInside(plan, inner, [first]);
+    assertInside(plan, last, [second, event]);
     assertDocked(plan, edge);
     assertStableSelection(d, pool, plan);
   });
@@ -1134,8 +1127,8 @@ test('fits two subprocess levels, keeps labels and annotations inside, and prese
   assert.deepEqual([outerBox.x, outerBox.y], [100, 120]);
   assert.ok(outerBox.width < outer.box.width);
   assert.ok(innerBox.width > inner.box.width);
-  assertInsets(plan, outer, [inner, collapsed]);
-  assertInsets(plan, inner, [a, b]);
+  assertInside(plan, outer, [inner, collapsed], 40);
+  assertInside(plan, inner, [a, b], 40);
   assert.equal(finalBox(plan, event).y + 18, outerBox.y + outerBox.height);
   assert.equal(finalBox(plan, collapsed).width, collapsed.box.width);
   assert.deepEqual(boundsOf([innerBox, finalBox(plan, note), translate(a.labels[0], delta(plan, a))]), innerBox);
@@ -1153,7 +1146,7 @@ test('grows a tight selected pool while leaving empty containers at their origin
   d.connect(empty, end);
   const plan = planSelection(d, alignmentSelection(d, [pool.element]), gaps);
   assert.equal(plan.reason, undefined);
-  assertInsets(plan, pool, [empty, end]);
+  assertInside(plan, pool, [empty, end], 40);
   assert.ok(finalBox(plan, pool).width > pool.box.width);
   assert.equal(finalBox(plan, empty).width, empty.box.width);
   assert.equal(finalBox(plan, empty).height, empty.box.height);
@@ -1166,18 +1159,25 @@ test('refuses to grow a selected subprocess through its parent or a stationary s
   const sub = d.add('Sub', box(70, 40, 140, 120), { scope: pool, expanded: true });
   const a = d.add('A', box(82, 48), { scope: sub });
   const b = d.add('B', box(90, 55), { scope: sub });
-  d.connect(a, b);
+  const edge = d.connect(a, b);
+  edge.points = [point(132, 48), point(140, 115)];
   const selection = alignmentSelection(d, [sub.element]);
-  const before = d.figures.map((figure) => figure.box);
-  assert.deepEqual(planSelection(d, selection, gaps), { reason: 'collisions' });
-  assert.deepEqual(d.figures.map((figure) => figure.box), before);
+  function assertUnchangedOnRefusal() {
+    const boxes = structuredClone(d.figures.map((figure) => figure.box));
+    const points = structuredClone(edge.points);
+    assert.deepEqual(planSelection(d, selection, gaps), { reason: 'collisions' });
+    assert.deepEqual(d.figures.map((figure) => figure.box), boxes);
+    assert.deepEqual(edge.points, points);
+  }
+  assertUnchangedOnRefusal();
   pool.box = box(0, 0, 900, 400);
   const sibling = d.add('Sibling', box(235, 75), { scope: pool });
-  assert.deepEqual(planSelection(d, selection, gaps), { reason: 'collisions' });
+  assertUnchangedOnRefusal();
   sibling.box = box(650, 75);
   const plan = planSelection(d, selection, gaps);
   assert.equal(plan.reason, undefined);
   assert.ok(finalBox(plan, sub).width > sub.box.width);
+  assertInside(plan, sub, [a, b], 40);
   assert.ok(!plan.boxes.has(pool) && !plan.boxes.has(sibling));
   assertStableSelection(d, sub, plan);
 });

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { readBuildMetadata } from '../scripts/build-metadata.js';
+import { formatVersion, readBuildMetadata } from '../scripts/build-metadata.js';
 
 function repository(t) {
   const directory = mkdtempSync(join(tmpdir(), 'bpmn-forge-git-'));
@@ -95,26 +95,23 @@ test('uses the squash commit subject and body for a single bump', (t) => {
   assert.equal(metadata().version, '1.00.0');
 });
 
-test('keeps padding at two digits minimum and embeds twenty commits for the built revision', (t) => {
+test('formats the minor version with at least two digits', () => {
+  assert.equal(formatVersion([0, 9, 4]), '0.09.4');
+  assert.equal(formatVersion([0, 10, 0]), '0.10.0');
+  assert.equal(formatVersion([0, 100, 0]), '0.100.0');
+});
+
+test('embeds the latest twenty commits reachable from the built revision, including detached HEAD', (t) => {
   const { git, commit, addGenerator, metadata } = repository(t);
   addGenerator();
-  for (let minor = 2; minor <= 9; minor++) commit(`feat: change ${minor}`);
-  for (let patch = 1; patch <= 4; patch++) commit(`Patch ${patch}`);
-  assert.equal(metadata().version, '0.09.4');
-  commit('feat: change 10');
-  assert.equal(metadata().version, '0.10.0');
-  for (let minor = 11; minor <= 99; minor++) commit(`feat: change ${minor}`);
-  for (let patch = 1; patch <= 4; patch++) commit(`Patch ${patch}`);
-  assert.equal(metadata().version, '0.99.4');
-  commit('feat: change 100');
+  for (let change = 1; change <= 20; change++) commit(`Change ${change}`);
   const revision = git('rev-parse', 'HEAD');
   const date = git('show', '-s', '--format=%cI', revision);
   const baseUrl = 'https://github.com/DatKorso/bpmn-forge-web';
   const build = metadata();
-  assert.equal(build.version, '0.100.0');
   assert.equal(build.repositoryUrl, baseUrl);
   assert.equal(build.commits.length, 20);
-  assert.deepEqual(build.commits[0], { title: 'feat: change 100', date, url: `${baseUrl}/commit/${revision}` });
+  assert.deepEqual(build.commits[0], { title: 'Change 20', date, url: `${baseUrl}/commit/${revision}` });
   assert.equal(build.historyUrl, `${baseUrl}/commits/${revision}`);
   commit('Newer commit');
   git('switch', '--quiet', '--detach', revision);
