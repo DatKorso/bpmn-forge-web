@@ -87,7 +87,7 @@ function flowObstacles(state, flows) {
   return { boxes, diagonals };
 }
 
-export function placeAnnotations(layout, state, flows, explicit) {
+export function placeAnnotations(layout, state, flows, explicit, preferredBox) {
   const { figures, annotations, anchors, containers } = layout;
   const placements = annotations.map((note) => {
     const candidates = [...anchors.get(note)].filter((anchor) => {
@@ -101,7 +101,7 @@ export function placeAnnotations(layout, state, flows, explicit) {
   const { boxes: lines, diagonals } = flowObstacles(state, flows);
   for (const { note, anchor, containers } of placements) {
     if (!pending.delete(note)) continue;
-    const preferred = anchor ? translate(note.box, {
+    const preferred = preferredBox ? preferredBox(note) : anchor ? translate(note.box, {
       x: state.boxes.get(anchor).x - anchor.box.x, y: state.boxes.get(anchor).y - anchor.box.y
     }) : state.boxes.get(note);
     const limits = containers.length ? intersection(containers.map((frame) => contentBox(frame, state.boxes.get(frame)))) : null;
@@ -109,7 +109,7 @@ export function placeAnnotations(layout, state, flows, explicit) {
     for (const figure of figures) {
       if (figure === note || pending.has(figure) || figure.kind === 'group') continue;
       const box = state.boxes.get(figure);
-      if (!containers.includes(figure)) obstacles.push(box);
+      if (!containers.includes(figure) && !(preferredBox && figure.kind === 'lane')) obstacles.push(box);
       else if (figure.header) obstacles.push(headerBox(figure, box));
       obstacles.push(...projectedLabels(figure, box));
     }
@@ -124,7 +124,7 @@ export function placeAnnotations(layout, state, flows, explicit) {
     const wasHit = (before, after) => intersects(box, after) && !intersects(note.box, before);
     if (containers.some((frame) => containsBox(frame.box, note.box) && !containsBox(state.boxes.get(frame), box)) ||
         figures.some((figure) => figure !== note && figure.kind !== 'group' && !containers.includes(figure) &&
-          (wasHit(figure.box, state.boxes.get(figure)) || projectedLabels(figure, state.boxes.get(figure))
+          !(preferredBox && figure.kind === 'lane') && (wasHit(figure.box, state.boxes.get(figure)) || projectedLabels(figure, state.boxes.get(figure))
             .some((label, index) => wasHit(figure.labels[index], label))))) return { note, containers, fixed: true };
   }
   return null;
@@ -142,7 +142,7 @@ export function obstructedFlows({ annotations }, state, flows) {
   });
 }
 
-export function routeAssociations(layout, state, fitted = new Set()) {
+export function routeAssociations(layout, state, fitted = new Set(), fresh = false) {
   const { figures, associations, containers } = layout;
   for (const edge of associations) {
     const { source, target } = edge;
@@ -150,12 +150,12 @@ export function routeAssociations(layout, state, fitted = new Set()) {
     const to = state.boxes.get(target);
     const containing = new Set([...containers.get(source), ...containers.get(target)]);
     const obstacles = [];
-    const points = state.routes.get(edge) ?? edge.points;
+    const points = fresh ? undefined : state.routes.get(edge) ?? edge.points;
     const path = segments(points);
     const oldPath = segments(edge.points);
     const crosses = (segments, box) => segments.some(([a, b]) => cutsInterior(a, b, box));
     const shared = [...fitted].filter((frame) => containers.get(source).includes(frame) && containers.get(target).includes(frame));
-    let affected = shared.length > 0 || changedBox(source.box, from) || changedBox(target.box, to);
+    let affected = fresh || shared.length > 0 || changedBox(source.box, from) || changedBox(target.box, to);
     for (const figure of figures) {
       if (figure.kind === 'group') continue;
       const box = state.boxes.get(figure);
