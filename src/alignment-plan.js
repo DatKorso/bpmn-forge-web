@@ -1,5 +1,5 @@
-import { adjacentBranches, boundsOf, ceilGrid, center, forwardFlows, intersects, layoutProcess, translate, translateWaypoints } from './layout.js';
-import { acceptsRoute, compareCosts, ROUTE_MARGIN, routeCost, routeFlows, translatedRouteIsClear } from './route-flows.js';
+import { adjacentBranches, boundsOf, ceilGrid, center, forwardFlows, intersects, layoutProcess, snap, translate, translateWaypoints } from './layout.js';
+import { acceptsRoute, compareCosts, ROUTE_MARGIN, routeCost, routeFlows, simplifyRoute, translatedRouteIsClear } from './route-flows.js';
 import { collaboration, placePools, routeMessages } from './pool-layout.js';
 import { annotationLayout, isAnnotation, isFrame, obstructedFlows, placeAnnotations, routeAssociations } from './annotation-layout.js';
 
@@ -282,6 +282,67 @@ function preferSpacing(candidate, base, best) {
     compareCosts(spacingCost(candidate), spacingCost(best)) < 0;
 }
 
+function improveSingleNodeBranches(best, { units, diagram, scope, frame, toLocal, toWorld, spacing, obstacles, lanes, evaluate }) {
+  const incoming = diagram.incoming;
+  const outgoing = diagram.outgoing;
+  const byFigure = new Map(units.map((unit) => [unit.figure, unit]));
+  const local = (plan, figure) => toLocal(plan.boxes.get(figure));
+  const bends = (plan, edge) => Math.max(0, simplifyRoute(plan.routes.get(edge) ?? edge.points ?? []).length - 2);
+  const gap = (plan, entry, exit) => {
+    const [upper, lower] = [local(plan, entry.source), local(plan, exit.target)].sort((a, b) => a.y - b.y);
+    return [bottom(upper), lower.y];
+  };
+  const candidates = [];
+  for (const { figure, lane, parts } of units) {
+    const inputs = incoming.get(figure) ?? [];
+    const outputs = outgoing.get(figure) ?? [];
+    if (inputs.length !== 1 || outputs.length !== 1) continue;
+    const [entry] = inputs;
+    const [exit] = outputs;
+    const previous = byFigure.get(entry.source);
+    const next = byFigure.get(exit.target);
+    if (!previous || !next || previous === next || previous.figure === figure || next.figure === figure ||
+        previous.lane !== lane || next.lane !== lane || outgoing.get(previous.figure).length < 2 ||
+        incoming.get(next.figure).length < 2) continue;
+    const turns = [bends(best.plan, entry), bends(best.plan, exit)];
+    const [start, end] = gap(best.plan, entry, exit);
+    const box = local(best.plan, figure);
+    if (Math.max(...turns) > 1 && start < end && (box.y < start || bottom(box) > end)) {
+      candidates.push({ figure, lane, parts, entry, exit, turns: turns[0] + turns[1] });
+    }
+  }
+
+  for (const { figure, lane, parts, entry, exit } of candidates.sort((a, b) =>
+    b.turns - a.turns || byId(a.figure, b.figure)).slice(0, 9)) {
+    const { plan } = best;
+    const [start, end] = gap(plan, entry, exit);
+    const box = local(plan, figure);
+    if (start >= end || box.y >= start && bottom(box) <= end ||
+        Math.max(bends(plan, entry), bends(plan, exit)) <= 1) continue;
+    const origin = frame?.y ?? 0;
+    const dy = origin + snap((start + end) / 2 - origin) - center(box, 'y');
+    const area = boundsOf(parts.map((part) => translate(local(plan, part), { x: 0, y: dy })));
+    if (area.y < start || bottom(area) > end) continue;
+    if ([scope, lane].some((container) => {
+      if (!plan.boxes.has(container)) return false;
+      const inset = container.kind === 'pool' ? POOL_INSET : 0;
+      return !contains(fixedArea(local(plan, container), container.header, Math.max(inset, ROUTE_MARGIN), inset), area);
+    })) continue;
+    if (units.some((unit) => unit.figure !== figure && unit.lane === lane &&
+        !hasClearance(area, boundsOf(unit.parts.map((part) => local(plan, part))), spacing))) continue;
+
+    const moved = clone(plan);
+    moveTree(moved, diagram, figure, toWorld({ x: 0, y: dy }));
+    if (scopeCollisions(moved, plan, [...new Set([...obstacles, ...parts])], lanes, scope)) continue;
+    const tested = evaluate({ ...best, plan: moved });
+    if (!tested || tested.cost.slice(0, 3).some((value, index) => value > best.cost[index]) ||
+        bends(tested.plan, entry) + bends(tested.plan, exit) >= bends(plan, entry) + bends(plan, exit) ||
+        incoming.get(exit.target).some((edge) => bends(plan, edge) === 0 && bends(tested.plan, edge) > 0)) continue;
+    best = tested;
+  }
+  return best;
+}
+
 function planScope(diagram, state, scope, gaps) {
   const figures = diagram.scopes.get(scope) ?? [];
   const members = figures.filter((figure) => figure.kind !== 'lane' && figure.kind !== 'group');
@@ -464,6 +525,9 @@ function planScope(diagram, state, scope, gaps) {
     }
   }
 
+  best = improveSingleNodeBranches(best, { units, diagram, scope, frame, toLocal, toWorld, spacing: minimums,
+    obstacles: obstaclesInScope, lanes, evaluate });
+
   const oldScope = state.boxes.get(scope);
   if (oldScope && scope.kind !== 'pool' && !sameBox(oldScope, best.plan.boxes.get(scope))) {
     makeRoom(best.plan, diagram, scope, oldScope, gaps);
@@ -487,6 +551,8 @@ function indexDiagram(figures, edges, auxiliary, canMove = () => true) {
     notes,
     followers,
     edges,
+    incoming: Map.groupBy(edges, ({ target }) => target),
+    outgoing: Map.groupBy(edges, ({ source }) => source),
     internalEdges: [...edges, ...auxiliary],
     children: Map.groupBy(figures, (figure) => figure.parent),
     scopes: Map.groupBy(figures, (figure) => figure.scope),
@@ -503,6 +569,7 @@ export function planAlignment({ root, figures, edges, messageFlows = [], auxilia
   const diagram = indexDiagram(figures, edges, auxiliary);
   const initial = { boxes: new Map(figures.map((figure) => [figure, figure.box])), routes: new Map() };
   const skipped = new Map();
+  let reverted = false;
   let state = initial;
   const pools = figures.filter((figure) => figure.kind === 'pool').sort(byId);
 
@@ -531,6 +598,7 @@ export function planAlignment({ root, figures, edges, messageFlows = [], auxilia
     for (const [region, reason] of failures) skipped.set(region, reason);
   }
 
+  const failedScopes = new Set(skipped.keys());
   if (pools.length > 1 || messageFlows.length) {
     const collab = collaboration(figures, messageFlows, diagram.followers);
     const placed = placePools(collab, state, initial, gaps, (next, pool, delta) => moveTree(next, diagram, pool, delta));
@@ -541,12 +609,20 @@ export function planAlignment({ root, figures, edges, messageFlows = [], auxilia
       const nonOverlapping = collab.pools.every((pool, index) => collab.pools.slice(index + 1)
         .every((other) => !intersects(state.boxes.get(pool), state.boxes.get(other))));
       const routes = nonOverlapping && routeMessages(collab, state, initial);
+      reverted = !routes;
       state = routes ? { boxes: state.boxes, routes: new Map([...state.routes, ...routes]) } : initial;
     }
   }
   const finished = finishAnnotations(diagram, state, initial, messageFlows, gaps);
   if (!finished) return { ...changes(initial), skipped: [], reason: 'annotations' };
-  return { ...changes(finished), skipped: [...skipped].map(([scope, reason]) => ({ scope, reason })) };
+  const labelGateways = reverted ? [] : figures.filter((figure) => {
+    if (figure.type !== 'bpmn:ExclusiveGateway') return false;
+    for (let scope = figure.scope; scope; scope = scope.kind === 'pool' ? null : scope.scope) {
+      if (failedScopes.has(scope)) return false;
+    }
+    return true;
+  });
+  return { ...changes(finished), labelGateways, skipped: [...skipped].map(([scope, reason]) => ({ scope, reason })) };
 }
 
 export function alignmentSelection(diagram, elements) {
@@ -669,15 +745,21 @@ export function planSelection(snapshot, selection, gaps) {
     selected.has(anchor.host ?? anchor) || [...selected].some((figure) => descendantOf(anchor, figure)));
   const collab = collaboration(figures, messageFlows, diagram.followers);
   const initial = { boxes: new Map(figures.map((figure) => [figure, figure.box])), routes: new Map() };
+  let plan;
   if (selection.pools) {
     const placed = placePools(collab, initial, initial, gaps,
       (next, pool, delta) => moveTree(next, diagram, pool, delta), selection.pools);
     if (!placed.state) return { reason: placed.reason === 'stability' ? 'poolStability' : 'poolRouting' };
     const state = { boxes: placed.state.boxes, routes: new Map([...placed.state.routes, ...placed.routes]) };
     const finished = finishAnnotations(diagram, state, initial, messageFlows, gaps, selection);
-    return finished ? changes(finished) : { reason: 'annotations' };
+    plan = finished ? changes(finished) : { reason: 'annotations' };
+  } else {
+    plan = planProcessSelection(snapshot, diagram, collab, initial, selection, gaps);
   }
-  return planProcessSelection(snapshot, diagram, collab, initial, selection, gaps);
+  if (plan.reason) return plan;
+  const labelGateways = figures.filter((figure) => figure.type === 'bpmn:ExclusiveGateway' &&
+    (selected.has(figure) || [...selected].some((member) => descendantOf(figure, member))));
+  return { ...plan, labelGateways };
 }
 
 function planProcessSelection({ figures, edges, messageFlows = [] }, diagram, collab, initial, selection, gaps) {

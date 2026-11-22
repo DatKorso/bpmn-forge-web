@@ -4,6 +4,8 @@ import { collectLanes, getLanesRoot, LANE_INDENTATION } from 'bpmn-js/lib/featur
 import { getLabelAdjustment } from 'bpmn-js/lib/features/modeling/behavior/util/LabelLayoutUtil';
 import { isDirectionHorizontal } from 'bpmn-js/lib/features/modeling/util/ModelingUtil';
 import { alignmentSelection, planAlignment, planSelection } from './alignment-plan.js';
+import { isFrame } from './annotation-layout.js';
+import { placeGatewayLabel } from './gateway-label-layout.js';
 import { translate, translateWaypoints } from './layout.js';
 
 const COMMAND = 'editor.autoAlign';
@@ -94,13 +96,50 @@ function sameWaypoints(a, b) {
     Math.abs(point.x - b[index].x) < 1e-7 && Math.abs(point.y - b[index].y) < 1e-7);
 }
 
-class AlignCommand {
-  static $inject = ['modeling', 'bpmnUpdater', 'eventBus'];
+function gatewayLabelBounds(groups) {
+  const bounds = new Map();
+  for (const { diagram, gateways } of groups) {
+    if (!gateways.length) continue;
+    const { figures } = diagram;
+    const connections = figures.flatMap(({ element }) => element.outgoing.filter((edge) => !edge.hidden));
+    const paths = connections.map(({ waypoints }) => waypoints);
+    const labels = [...figures.map(({ element }) => element), ...connections]
+      .flatMap(({ labels }) => labels.filter((label) => !label.hidden));
+    for (const gateway of gateways.toSorted((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
+      const visible = gateway.element.labels.filter((label) => !label.hidden);
+      if (!visible.length) continue;
+      const containers = new Set();
+      for (let figure = gateway; figure; figure = figure.parent) {
+        if (isFrame(figure)) containers.add(figure);
+        for (let lane = figure.lane; lane?.kind === 'lane'; lane = lane.parent) containers.add(lane);
+      }
+      const obstacles = figures.filter((figure) => figure !== gateway && figure.kind !== 'group')
+        .flatMap((figure) => {
+          const box = getBounds(figure.element);
+          if (!containers.has(figure)) return [box];
+          if (!figure.header) return [];
+          return [figure.horizontal === false ? { ...box, height: figure.header } : { ...box, width: figure.header }];
+        });
+      for (const label of visible) {
+        const before = getBounds(label);
+        const after = placeGatewayLabel(before, getBounds(gateway.element), [
+          ...obstacles, ...labels.filter((other) => other !== label).map((other) => bounds.get(other) ?? getBounds(other))
+        ], paths, [...containers].map(({ element }) => getBounds(element)));
+        if (after !== before) bounds.set(label, after);
+      }
+    }
+  }
+  return bounds;
+}
 
-  constructor(modeling, bpmnUpdater, eventBus) {
+class AlignCommand {
+  static $inject = ['modeling', 'bpmnUpdater', 'eventBus', 'commandStack'];
+
+  constructor(modeling, bpmnUpdater, eventBus, commandStack) {
     this.modeling = modeling;
     this.bpmnUpdater = bpmnUpdater;
     this.eventBus = eventBus;
+    this.commandStack = commandStack;
   }
 
   // Apply final geometry together so intermediate lane boundaries never rewrite flowNodeRef.
@@ -140,7 +179,8 @@ class AlignCommand {
   }
 
   // Nested commands belong in postExecute so the command stack groups their undo and redo.
-  postExecute({ bounds, routes, relayout }) {
+  postExecute(context) {
+    const { bounds, routes, relayout, labelGroups } = context;
     for (const connection of relayout) {
       this.modeling.layoutConnection(connection, {
         waypoints: [],
@@ -150,6 +190,11 @@ class AlignCommand {
     }
     for (const [connection, waypoints] of routes) {
       this.modeling.updateWaypoints(connection, waypoints, { createElementsBehavior: false });
+    }
+    if (labelGroups) {
+      const labels = gatewayLabelBounds(labelGroups);
+      context.movedLabels = labels.size;
+      if (labels.size) this.commandStack.execute(COMMAND, { bounds: labels, routes: new Map(), relayout: [] });
     }
   }
 }
@@ -184,6 +229,17 @@ class AutoAlign {
     const shapes = elements.length ? this.shapesByRoot(root).get(root) ?? [] : [];
     const diagram = snapshot(root, shapes, this.elementRegistry);
     return { diagram, ...alignmentSelection(diagram, elements) };
+  }
+
+  apply(bounds, routes, relayout, labelGroups) {
+    if (bounds.size || routes.size || relayout.length) {
+      const context = { bounds, routes, relayout, labelGroups };
+      this.commandStack.execute(COMMAND, context);
+      return context.movedLabels;
+    }
+    const labels = gatewayLabelBounds(labelGroups);
+    if (labels.size) this.commandStack.execute(COMMAND, { bounds: labels, routes, relayout });
+    return labels.size;
   }
 
   runSelection(elements, gaps) {
@@ -231,9 +287,9 @@ class AutoAlign {
       if (!sameWaypoints(waypoints, points)) routes.set(connection, points);
     }
 
-    if (bounds.size || routes.size) this.commandStack.execute(COMMAND, { bounds, routes, relayout: [] });
+    const movedLabels = this.apply(bounds, routes, [], [{ diagram: selection.diagram, gateways: plan.labelGateways }]);
     return {
-      moved: plan.boxes.size, rerouted: routes.size,
+      moved: plan.boxes.size, rerouted: routes.size, movedLabels,
       movedPools: [...plan.boxes].filter(([{ kind, box }, next]) =>
         kind === 'pool' && (box.x !== next.x || box.y !== next.y)).length,
       reroutedMessages: [...routes.keys()].filter((connection) => is(connection, 'bpmn:MessageFlow')).length
@@ -245,6 +301,7 @@ class AutoAlign {
     const routes = new Map();
     const relayout = new Set();
     const skipped = [];
+    const labelGroups = [];
     let moved = 0;
     let resized = 0;
     let movedPools = 0;
@@ -253,6 +310,7 @@ class AutoAlign {
       const diagram = snapshot(root, shapes, this.elementRegistry);
       const plan = planAlignment(diagram, gaps);
       if (plan.reason) return { reason: SKIP_REASONS[plan.reason] };
+      labelGroups.push({ diagram, gateways: plan.labelGateways });
       for (const [{ element, box, kind }, next] of plan.boxes) {
         bounds.set(element, next);
         const delta = { x: next.x - box.x, y: next.y - box.y };
@@ -275,8 +333,8 @@ class AutoAlign {
       }
     }
 
-    if (bounds.size || routes.size) this.commandStack.execute(COMMAND, { bounds, routes, relayout });
-    return { moved, resized, rerouted: routes.size + relayout.size, skipped, movedPools,
+    const movedLabels = this.apply(bounds, routes, [...relayout], labelGroups);
+    return { moved, resized, rerouted: routes.size + relayout.size, skipped, movedPools, movedLabels,
       reroutedMessages: [...routes.keys()].filter((connection) => is(connection, 'bpmn:MessageFlow')).length };
   }
 }

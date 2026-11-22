@@ -930,3 +930,91 @@ test('refuses an impossible full annotation layout without applying any geometry
   assert.equal(plan.boxes.size, 0);
   assert.equal(plan.routes.size, 0);
 });
+
+function timerBranch() {
+  const d = diagram();
+  const start = d.add('start', box(-18, 352, 36, 36), { type: 'bpmn:StartEvent' });
+  const analysis = d.add('analysis', box(520, 330, 100, 80));
+  const split = d.add('split', box(415, 55, 50, 50), { type: 'bpmn:ExclusiveGateway' });
+  const timer = d.add('timer', box(452, -18, 36, 36), { type: 'bpmn:IntermediateCatchEvent' });
+  const edits = d.add('edits', box(800, 40, 100, 80));
+  const task0 = d.add('task0', box(530, 60, 100, 80));
+  const task1 = d.add('task1', box(510, 390, 100, 80));
+  const direct = d.connect(start, analysis);
+  d.connect(analysis, task0);
+  d.connect(task0, task1);
+  d.connect(task1, split);
+  d.connect(split, edits);
+  const entry = d.connect(split, timer);
+  const exit = d.connect(timer, analysis);
+  return { d, split, timer, analysis, direct, entry, exit };
+}
+
+const timerSpacing = { x: 60, y: 40, maxX: 120, maxY: 80 };
+
+test('places a single timer between rows, saves a bend and preserves the straight start flow on repeat', () => {
+  const { d, split, timer, analysis, direct, entry, exit } = timerBranch();
+  const plan = planAlignment(d, timerSpacing);
+  const timerBox = finalBox(plan, timer);
+  assert.deepEqual(plan.skipped, []);
+  assert.equal(timerBox.x, 462);
+  assert.ok(timerBox.y >= finalBox(plan, split).y + split.box.height);
+  assert.ok(timerBox.y + timerBox.height <= finalBox(plan, analysis).y);
+  assert.equal(plan.routes.get(entry).length, 3);
+  assert.equal(plan.routes.get(exit).length, 3);
+  assert.equal(plan.routes.get(direct).length, 2);
+
+  apply(plan);
+  const repeated = planAlignment(d, timerSpacing);
+  assert.equal(repeated.boxes.size, 0);
+  for (const [edge, path] of repeated.routes) assert.deepEqual(path, edge.points);
+});
+
+test('keeps the base timer layout and routing when an artifact occupies the gap', () => {
+  const { d, timer, direct, entry, exit } = timerBranch();
+  d.add('artifact', box(470, 190, 20, 80), { kind: 'artifact', type: 'bpmn:DataObjectReference' });
+  const plan = planAlignment(d, timerSpacing);
+  assert.deepEqual(plan.skipped, []);
+  assert.deepEqual(finalBox(plan, timer), box(462, -18, 36, 36));
+  assert.deepEqual(plan.routes.get(entry), [point(370, 75), point(370, 0), point(462, 0)]);
+  assert.deepEqual(plan.routes.get(exit), [point(498, 0), point(618, 0), point(618, 380), point(230, 380)]);
+  assert.equal(plan.routes.get(direct).length, 2);
+});
+
+test('places the timer between columns in a vertical pool and preserves its process coordinate', () => {
+  const { d, split, timer, analysis, direct, entry, exit } = timerBranch();
+  const nodes = [...d.figures];
+  const pool = d.add('pool', box(-100, -150, 750, 1300), { kind: 'pool', horizontal: false, header: 30 });
+  for (const node of nodes) {
+    const { x, y, width, height } = node.box;
+    node.box = box(y, x, height, width);
+    node.scope = node.parent = pool;
+  }
+  const plan = planAlignment(d, { x: 40, y: 60, maxX: 80, maxY: 120 });
+  const timerBox = finalBox(plan, timer);
+  assert.deepEqual(plan.skipped, []);
+  assert.equal(timerBox.y, 462);
+  assert.ok(timerBox.x >= finalBox(plan, split).x + split.box.width);
+  assert.ok(timerBox.x + timerBox.width <= finalBox(plan, analysis).x);
+  assert.equal(plan.routes.get(entry).length, 3);
+  assert.equal(plan.routes.get(exit).length, 3);
+  assert.equal(plan.routes.get(direct).length, 2);
+});
+
+test('limits gateway label placement to the selected gateways and selected container descendants', () => {
+  const d = diagram();
+  const pool = d.add('pool', box(0, 0, 780, 400), { kind: 'pool', horizontal: true, header: 30 });
+  const inside = { scope: pool, type: 'bpmn:ExclusiveGateway' };
+  const selected = d.add('selected', box(115, 65, 50, 50), inside);
+  const neighbor = d.add('neighbor', box(415, 185, 50, 50), inside);
+  const task = d.add('task', box(210, 60), { scope: pool });
+  d.connect(selected, task);
+  const outside = d.add('outside', box(815, 185, 50, 50), { type: 'bpmn:ExclusiveGateway' });
+
+  const plan = planSelection(d, alignmentSelection(d, [selected.element, task.element]), gaps);
+  assert.deepEqual(plan.labelGateways, [selected]);
+  assert.ok(!plan.boxes.has(neighbor));
+  const poolPlan = planSelection(d, alignmentSelection(d, [pool.element]), gaps);
+  assert.deepEqual(poolPlan.labelGateways, [selected, neighbor]);
+  assert.ok(!poolPlan.boxes.has(outside));
+});

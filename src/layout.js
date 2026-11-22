@@ -4,7 +4,7 @@ const EPSILON = 1e-7;
 
 const floorGrid = (value) => Math.floor((value + EPSILON) / GRID) * GRID;
 export const ceilGrid = (value) => Math.ceil((value - EPSILON) / GRID) * GRID;
-const snap = (value) => Math.round(value / GRID) * GRID;
+export const snap = (value) => Math.round(value / GRID) * GRID;
 
 export const center = (rect, axis) =>
   rect[axis] + rect[axis === 'x' ? 'width' : 'height'] / 2;

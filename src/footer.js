@@ -45,7 +45,7 @@ export function reportOperation(message, error = false) {
 }
 
 export function reportAlignment({
-  moved = 0, resized = 0, rerouted = 0, movedPools = 0, reroutedMessages = 0, skipped = [], reason
+  moved = 0, resized = 0, rerouted = 0, movedPools = 0, reroutedMessages = 0, movedLabels = 0, skipped = [], reason
 }) {
   const severity = reason ? 'error' : skipped.length ? 'warning' : '';
   const movedShapes = moved - movedPools;
@@ -55,7 +55,8 @@ export function reportAlignment({
     ['Потоки сообщений', reroutedMessages],
     ['Фигуры', movedShapes],
     ['Контейнеры', resized],
-    ['Связи', reroutedOrdinary]
+    ['Связи', reroutedOrdinary],
+    ['Подписи', movedLabels]
   ].filter(([, count]) => count > 0).map(([label, count]) => `${label}: ${count}`);
 
   const warning = skipped.length ? `Предупреждение: пропущено участков — ${skipped.length}` : '';
@@ -63,7 +64,7 @@ export function reportAlignment({
     [warning, ...changes].filter(Boolean).join(' · ') || 'Изменений нет';
   const counts = `Перемещено фигур: ${movedShapes}. Расширено контейнеров: ${resized}. Обновлено обычных связей: ${reroutedOrdinary}. ` +
     `Перемещено пулов: ${movedPools}. Перестроено потоков сообщений: ${reroutedMessages}. ` +
-    `Пропущено участков: ${skipped.length}.`;
+    `Перемещено подписей: ${movedLabels}. Пропущено участков: ${skipped.length}.`;
   alignmentResult.textContent = reason ? summary : skipped.length ? `Предупреждение. ${counts}` : counts;
   alignmentResult.dataset.severity = severity;
   alignmentSkips.replaceChildren(...skipped.map(({ name, reason }) => {
