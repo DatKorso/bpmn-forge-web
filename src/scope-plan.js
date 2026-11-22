@@ -397,7 +397,7 @@ function finalizeScope(best, context, measureExcess) {
   if (oldScope && scope.kind !== 'pool' && !sameBox(oldScope, best.plan.boxes.get(scope))) {
     makeRoom(best.plan, diagram, scope, oldScope, gaps);
   }
-  const loops = flip ? [] : compactLoops(units, diagram.incoming, diagram.outgoing, lanes.length > 0);
+  const loops = compactLoops(units, diagram.incoming, diagram.outgoing, lanes.length > 0);
   return { state: best.plan, loops: loops.map((loop) =>
-    ({ ...loop, scope, members, units, lanes, measureExcess })) };
+    ({ ...loop, scope, members, units, lanes, measureExcess, vertical: flip })) };
 }

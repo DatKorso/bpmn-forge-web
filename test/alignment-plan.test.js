@@ -131,6 +131,25 @@ test('matches the previous bounds and routes for a loop drawn outside the left c
   assert.deepEqual(plan.routes.get(entry), [point(1390, 2125), point(1390, 2030)]);
 });
 
+test('preserves the equivalent compact loop in a vertical pool and on repeat', () => {
+  const fixture = compactLoopFixture();
+  const { d, pool, task, exit, entry } = fixture;
+  const transpose = ({ x, y, width, height }) => box(y, x, height, width);
+  pool.horizontal = false;
+  for (const figure of d.figures) figure.box = transpose(figure.box);
+  for (const edge of d.edges) edge.points = edge.points.map(({ x, y }) => point(y, x));
+
+  const plan = planAlignment(d, loopSpacing);
+  assert.deepEqual(plan.skipped, []);
+  assert.deepEqual(finalBox(plan, task), transpose(box(1210, 1950, 100, 80)));
+  assert.deepEqual(plan.routes.get(exit), [point(2030, 1260), point(2125, 1260)]);
+  assert.deepEqual(plan.routes.get(entry), [point(2125, 1390), point(1990, 1390), point(1990, 1310)]);
+  apply(plan);
+  const repeat = planAlignment(d, loopSpacing);
+  assert.equal(repeat.boxes.size, 0);
+  for (const [edge, points] of repeat.routes) assert.deepEqual(points, edge.points);
+});
+
 test('distinguishes interior crossings, shared lengths and connections meeting at an endpoint', () => {
   const first = [point(0, 0), point(20, 0)];
   assert.deepEqual(routeCost([first, [point(10, -10), point(10, 10)]]), [1, 0, 0, 40]);

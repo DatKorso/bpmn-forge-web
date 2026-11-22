@@ -68,7 +68,7 @@ async function readFixture(file) {
 for (const file of (await readdir(fixtures)).filter((name) => name.endsWith('.bpmn')).sort()) {
   test(`preserves the alignment golden for ${file}`, async () => {
     const diagram = await readFixture(file);
-    const gaps = file === 'compact-loop.bpmn' ? { x: 80, y: 80, maxX: 80, maxY: 80 } : { x: 40, y: 30 };
+    const gaps = file.endsWith('compact-loop.bpmn') ? { x: 80, y: 80, maxX: 80, maxY: 80 } : { x: 40, y: 30 };
     const plan = planAlignment(diagram, gaps);
     const actual = {
       boxes: Object.fromEntries(diagram.figures.map((figure) => [figure.id, plan.boxes.get(figure) ?? figure.box])),

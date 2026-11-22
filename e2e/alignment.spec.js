@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 const fixture = fileURLToPath(new URL('../test/fixtures/tight-pool.bpmn', import.meta.url));
+const collaborationFixture = fileURLToPath(new URL('../test/fixtures/collaboration.bpmn', import.meta.url));
 const loopFixture = fileURLToPath(new URL('../test/fixtures/compact-loop.bpmn', import.meta.url));
 
 async function openDiagram(page, path, filename) {
@@ -53,12 +54,12 @@ async function readDiagram(page, download) {
       elements(edge, di, 'waypoint').map((point) => numbers(point, ['x', 'y'])));
     const lanes = byId(elements(doc, model, 'lane'), 'id', (lane) =>
       elements(lane, model, 'flowNodeRef').map(({ textContent }) => textContent.trim()).sort());
-    const flows = byId(elements(doc, model, 'sequenceFlow'), 'id', (flow) => ({
+    const connections = (name) => byId(elements(doc, model, name), 'id', (flow) => ({
       sourceRef: flow.getAttribute('sourceRef'),
       targetRef: flow.getAttribute('targetRef')
     }));
 
-    return { shapes, labels, routes, lanes, flows };
+    return { shapes, labels, routes, lanes, flows: connections('sequenceFlow'), messages: connections('messageFlow') };
   }, xml);
 }
 
@@ -193,6 +194,30 @@ test('preserves a compact gateway loop through alignment, history, and reopening
   const exportedPath = testInfo.outputPath('compact-loop-aligned.bpmn');
   await exported.saveAs(exportedPath);
   await openDiagram(page, exportedPath, 'compact-loop-aligned.bpmn');
+  expect(await snapshot()).toEqual(aligned);
+});
+
+test('keeps message flow endpoints through collaboration alignment, undo, redo and reopening', async ({ page }, testInfo) => {
+  await page.goto('/');
+  await openDiagram(page, collaborationFixture, 'collaboration.bpmn');
+  const snapshot = async () => readDiagram(page, await downloadDiagram(page));
+  const original = await snapshot();
+
+  await page.getByRole('button', { name: 'Выровнять схему' }).click();
+  await expect(page.locator('#alignment-summary')).toHaveText('Выравнивание выполнено');
+  const aligned = await snapshot();
+  expect(aligned.shapes.Sender).not.toEqual(original.shapes.Sender);
+  expect(aligned.routes.Delivery).not.toEqual(original.routes.Delivery);
+  expect(aligned.messages).toEqual({ Delivery: { sourceRef: 'Send', targetRef: 'Receive' } });
+  expect(aligned.flows).toEqual(original.flows);
+
+  await page.getByRole('button', { name: 'Отменить', exact: true }).click();
+  expect(await snapshot()).toEqual(original);
+  await page.getByRole('button', { name: 'Повторить', exact: true }).click();
+  expect(await snapshot()).toEqual(aligned);
+  const exportPath = testInfo.outputPath('aligned-collaboration.bpmn');
+  await (await downloadDiagram(page)).saveAs(exportPath);
+  await openDiagram(page, exportPath, 'aligned-collaboration.bpmn');
   expect(await snapshot()).toEqual(aligned);
 });
 
