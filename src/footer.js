@@ -83,22 +83,13 @@ export function reportAlignment({
   const severity = reason ? 'error' : skipped.length ? 'warning' : '';
   const movedShapes = moved - movedPools;
   const reroutedOrdinary = rerouted - reroutedMessages;
-  const changes = [
-    ['Пулы', movedPools],
-    ['Потоки сообщений', reroutedMessages],
-    ['Фигуры', movedShapes],
-    ['Контейнеры', resized],
-    ['Связи', reroutedOrdinary],
-    ['Подписи', movedLabels]
-  ].filter(([, count]) => count > 0).map(([label, count]) => `${label}: ${count}`);
-
-  const warning = skipped.length ? `Предупреждение: пропущено участков — ${skipped.length}` : '';
-  const summary = reason ? `Ошибка: ${reason}` :
-    [warning, ...changes].filter(Boolean).join(' · ') || 'Изменений нет';
+  const changed = moved || resized || rerouted || movedLabels;
+  const summary = reason ? 'Не удалось выровнять' :
+    skipped.length ? 'Выравнивание с пропусками' : changed ? 'Выравнивание выполнено' : 'Изменений нет';
   const counts = `Перемещено фигур: ${movedShapes}. Контейнеров с изменённым размером: ${resized}. Обновлено обычных связей: ${reroutedOrdinary}. ` +
     `Перемещено пулов: ${movedPools}. Перестроено потоков сообщений: ${reroutedMessages}. ` +
     `Перемещено подписей: ${movedLabels}. Пропущено участков: ${skipped.length}.`;
-  alignmentResult.textContent = reason ? summary : skipped.length ? `Предупреждение. ${counts}` : counts;
+  alignmentResult.textContent = reason ?? counts;
   alignmentResult.dataset.severity = severity;
   alignmentSkips.replaceChildren(...skipped.map(({ name, reason }) => {
     const item = document.createElement('li');
@@ -109,7 +100,6 @@ export function reportAlignment({
 
   alignmentStatus.dataset.severity = severity;
   alignmentSummary.textContent = summary;
-  alignmentSummary.title = summary;
   alignmentStatus.hidden = false;
   announce(summary, Boolean(severity));
 }

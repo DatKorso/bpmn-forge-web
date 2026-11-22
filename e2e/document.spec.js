@@ -46,7 +46,12 @@ test('tracks the download checkpoint through undo, redo, and a new history branc
   await page.locator('#align').click();
   await expect(redo(page)).toBeDisabled();
   await expect(dirty(page)).not.toBeEmpty();
-  expect(await page.evaluate(() => !window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(true);
+  const beforeUnload = page.waitForEvent('dialog');
+  await page.close({ runBeforeUnload: true });
+  const dialog = await beforeUnload;
+  expect(dialog.type()).toBe('beforeunload');
+  await dialog.dismiss();
+  await expect(dirty(page)).not.toBeEmpty();
 });
 
 test('protects the current diagram when creating a new one', async ({ page }, testInfo) => {

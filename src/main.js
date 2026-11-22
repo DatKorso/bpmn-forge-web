@@ -67,9 +67,12 @@ function updateDirtyState() {
 function updateControls() {
   const stack = modeler?.get('commandStack');
   const selection = modeler?.get('selection').get() ?? [];
+  const root = modeler?.get('canvas').getRootElement();
+  const empty = !root?.children.length;
 
   for (const id of ['new', 'open']) byId(id).disabled = busy;
-  for (const id of ['download', 'align']) byId(id).disabled = busy || !modeler;
+  byId('download').disabled = busy || !modeler;
+  byId('align').disabled = busy || empty;
   byId('undo').disabled = busy || !stack?.canUndo();
   byId('redo').disabled = busy || !stack?.canRedo();
   const reason = busy || !modeler ? 'Дождитесь загрузки схемы.' : modeler.get('autoAlign').selection(selection).reason;
@@ -80,8 +83,7 @@ function updateControls() {
   renderProperties(modeler, selection);
   propertiesFields.inert = busy;
 
-  const root = modeler?.get('canvas').getRootElement();
-  byId('empty').hidden = busy || !root || root.children.length > 0;
+  byId('empty').hidden = busy || !root || !empty;
   workspace.inert = busy;
   workspace.setAttribute('aria-busy', String(busy));
 }
@@ -122,6 +124,8 @@ async function loadDiagram(readXML, nextFilename, message, operation = 'new') {
     const canvas = next.get('canvas');
     canvas.resized();
     if (canvas.getRootElement().children.length) fitDiagram(canvas);
+    next.on('create.init', () => host.classList.add('placing'));
+    next.on('create.cleanup', () => host.classList.remove('placing'));
     next.on('commandStack.changed', () => {
       if (modeler !== next) return;
       updateDirtyState();
@@ -158,6 +162,7 @@ async function loadDiagram(readXML, nextFilename, message, operation = 'new') {
 }
 
 const confirmation = byId('confirm-replace');
+let fileTrigger = byId('open');
 let pendingReplacement;
 
 function replaceDiagram(title, trigger, load) {
@@ -175,16 +180,21 @@ confirmation.addEventListener('close', async () => {
   pendingReplacement = undefined;
   const action = confirmation.returnValue;
   if (action === 'discard' || (action === 'download' && await downloadDiagram())) await load();
-  trigger.focus();
+  (trigger.closest('[hidden]') ? byId('open') : trigger).focus();
 });
 
 byId('new').addEventListener('click', () => replaceDiagram('Создать схему', byId('new'), () =>
   loadDiagram(() => EMPTY_XML, 'Новая схема.bpmn', 'Создана пустая схема.')));
-byId('open').addEventListener('click', () => fileInput.click());
+for (const id of ['open', 'empty-open']) {
+  byId(id).addEventListener('click', (event) => {
+    fileTrigger = event.currentTarget;
+    fileInput.click();
+  });
+}
 fileInput.addEventListener('change', () => {
   const [file] = fileInput.files;
   fileInput.value = '';
-  if (file) replaceDiagram('Открыть BPMN', byId('open'), () =>
+  if (file) replaceDiagram('Открыть BPMN', fileTrigger, () =>
     loadDiagram(() => file.text(), file.name, 'Файл открыт.', 'import'));
 });
 
@@ -237,10 +247,19 @@ for (const [id, factor] of [['zoom-out', 1 / 1.25], ['zoom-in', 1.25]]) {
 }
 byId('zoom-fit').addEventListener('click', () => fitDiagram(modeler.get('canvas')));
 
+function setGapError(input, message) {
+  input.setCustomValidity(message);
+  if (message) input.setAttribute('aria-invalid', 'true');
+  else input.removeAttribute('aria-invalid');
+  const error = byId(`${input.id}-error`);
+  error.textContent = message;
+  error.hidden = !message;
+}
+
 function validateRequiredGap(input) {
   const value = input.valueAsNumber;
   const valid = Number.isSafeInteger(value) && value >= 0;
-  input.setCustomValidity(valid ? '' : 'Введите целое число от нуля.');
+  setGapError(input, valid ? '' : 'Введите целое число от нуля.');
   return valid;
 }
 
@@ -254,7 +273,7 @@ function validateGaps() {
     max.min = validateRequiredGap(min) ? String(min.valueAsNumber) : '0';
     const optional = !max.value && !max.validity.badInput;
     const validMax = Number.isSafeInteger(max.valueAsNumber) && max.valueAsNumber >= Number(max.min);
-    max.setCustomValidity(optional || validMax ? '' : 'Введите целое число не меньше минимума.');
+    setGapError(max, optional || validMax ? '' : 'Введите целое число не меньше минимума.');
   }
 }
 
@@ -266,6 +285,7 @@ function updateGapMode() {
   const uniform = useUniformGap.checked;
   rangeGapSettings.hidden = rangeGapSettings.disabled = uniform;
   uniformGapSettings.hidden = uniformGapSettings.disabled = !uniform;
+  validateGaps();
 }
 
 useUniformGap.addEventListener('change', updateGapMode);
