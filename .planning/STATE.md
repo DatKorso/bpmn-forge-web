@@ -9,6 +9,14 @@ state_head: 9562f3a580402aea9bb8ac49eb373479c904ed00
 
 # Project State
 
+## Project Reference
+
+See [.planning/PROJECT.md](PROJECT.md) for the baseline established on 2026-11-22.
+
+**Core value:** Turn a hard-to-read BPMN diagram into a readable, editable diagram in the browser while preserving its process semantics.
+
+**Current focus:** Project baseline established. Milestone planning is deferred.
+
 Last activity: 2026-11-22 - Completed quick task 261122-ehx: Fit BPMN pools and expanded subprocesses
 
 ### Quick Tasks Completed
