@@ -85,6 +85,7 @@ function summarizeStages(stages, plan) {
 }
 
 const baselineUrl = new URL('../test/fixtures/graph-layout-baseline.json', import.meta.url);
+const currentUrl = new URL('../test/fixtures/graph-layout-current.json', import.meta.url);
 const reference = process.argv.includes('--capture') ? null : JSON.parse(await readFile(baselineUrl, 'utf8'));
 
 for (const [name, load] of fixtures) {
@@ -161,8 +162,15 @@ for (const record of Object.values(exact)) {
 }
 const report = { gaps: graphGaps, cases, hard, review, exact };
 if (process.argv.includes('--check-routes')) {
-  for (const [name, traces] of Object.entries(reference.exact)) assert.deepEqual(exact[name], traces, name);
-  assert.deepEqual(Object.keys(exact), Object.keys(reference.exact));
+  const current = JSON.parse(await readFile(currentUrl, 'utf8'));
+  assert.deepEqual(exact, { ...reference.exact, ...current.exact }, 'Routes differ from the expected snapshot');
 }
 if (process.argv.includes('--quality') && hard.length) process.exitCode = 1;
+if (process.argv.includes('--snapshot')) {
+  for (const key of ['cases', 'exact']) {
+    for (const [name, value] of Object.entries(report[key])) {
+      if (JSON.stringify(value) === JSON.stringify(reference[key][name])) delete report[key][name];
+    }
+  }
+}
 console.log(JSON.stringify(report, null, 2));

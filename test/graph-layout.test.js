@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { planGraphLayout } from '../src/graph-layout/index.js';
 import { packRows } from '../src/graph-layout/arrange.js';
 import { modelOrder, orderGraph } from '../src/graph-layout/model-order.js';
-import { acceptsRoute, simplifyRoute } from '../src/route-flows.js';
+import { acceptsRoute, routeCost, simplifyRoute } from '../src/route-flows.js';
 import { readDiagram, readFixture } from './helpers/read-fixture.js';
 import { boxOf, graphFixtures, graphGaps, measure, normalized, pathOf, perturb } from './helpers/layout-metrics.js';
 
@@ -167,6 +167,15 @@ test('keeps same-lane main flows and an unobstructed default flow straight', asy
   for (const id of ['StartToReview', 'DecisionToEnd']) {
     assert.equal(simplifyRoute(pathOf(plan, diagram.edges.find((edge) => edge.id === id))).length, 2);
   }
+});
+
+test('separates the invoice handoff and timer routes while preserving straight continuations', async () => {
+  const diagram = await readFixture('invoice-approval.bpmn');
+  const plan = await planGraphLayout(diagram, graphGaps);
+  const flow = (id) => pathOf(plan, diagram.edges.find((edge) => edge.id === id));
+  assert.equal(plan.reason, undefined);
+  assert.deepEqual(routeCost([flow('ForReview'), flow('Late')]).slice(0, 2), [0, 0]);
+  for (const id of ['Reviewed', 'Pay']) assert.equal(simplifyRoute(flow(id)).length, 2);
 });
 
 test('refuses atomically when a note cannot fit without changing process geometry', async () => {

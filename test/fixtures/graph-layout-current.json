@@ -1,0 +1,530 @@
+{
+  "gaps": {
+    "x": 40,
+    "y": 30
+  },
+  "cases": {
+    "incident-escalation": {
+      "nodes": 7,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [
+          "Severe"
+        ],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          4,
+          1548
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 585900
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          5,
+          836
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 263200
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 147840,
+            "routeCost": [
+              0,
+              20,
+              4,
+              572
+            ],
+            "routedFlows": 6
+          },
+          "packed": {
+            "area": 249100,
+            "overlaps": [],
+            "straightPassage": [
+              "ToTriage",
+              "Typical",
+              "ClosedNormally"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              5,
+              836
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    },
+    "invoice-approval": {
+      "nodes": 8,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [
+          "ForReview",
+          "Approved"
+        ],
+        "localRetreat": 274,
+        "routeCost": [
+          0,
+          0,
+          5,
+          2688
+        ],
+        "straightDefaults": [
+          0,
+          1
+        ],
+        "area": 834900
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          5,
+          1279
+        ],
+        "straightDefaults": [
+          0,
+          1
+        ],
+        "area": 423000
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 155448,
+            "routeCost": [
+              0,
+              45,
+              4,
+              695
+            ],
+            "routedFlows": 7
+          },
+          "packed": {
+            "area": 408900,
+            "overlaps": [],
+            "straightPassage": [
+              "RegisterInvoice",
+              "Reviewed",
+              "Declined",
+              "Pay"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              5,
+              1279
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [
+          "Reviewed",
+          "Pay"
+        ],
+        "exceptions": {
+          "Approved": "The default crosses from the review lane into the accounting lane."
+        }
+      }
+    },
+    "tight-pool": {
+      "nodes": 4,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [
+          "ReviewToDecision"
+        ],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          1,
+          322
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 106400
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          3,
+          730
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 183600
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Pool",
+          "elk": {
+            "area": 34936,
+            "routeCost": [
+              0,
+              58,
+              4,
+              412
+            ],
+            "routedFlows": 4
+          },
+          "packed": {
+            "area": 173400,
+            "overlaps": [],
+            "straightPassage": [
+              "StartToReview",
+              "DecisionToEnd"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              3,
+              730
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [
+          "StartToReview",
+          "DecisionToEnd"
+        ],
+        "exceptions": {}
+      }
+    },
+    "timer-branch": {
+      "nodes": 3,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          1,
+          320
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 59400
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          1,
+          200
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 43680
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Process",
+          "elk": {
+            "area": 42312,
+            "routeCost": [
+              0,
+              10,
+              2,
+              222
+            ],
+            "routedFlows": 2
+          },
+          "packed": {
+            "area": 43680,
+            "overlaps": [],
+            "straightPassage": [
+              "Success"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              1,
+              200
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      }
+    }
+  },
+  "hard": [],
+  "review": [
+    {
+      "name": "acyclic-reorder",
+      "areaRatio": 0.26394344069128045,
+      "extraBends": [
+        [
+          "SA",
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "compact-loop",
+      "areaRatio": 0.032879818594104306,
+      "extraBends": [
+        [
+          "CloseLoop",
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "incident-escalation",
+      "areaRatio": 0.44922341696535245,
+      "extraBends": [
+        [
+          "Severe",
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "invoice-approval",
+      "areaRatio": 0.5066475026949335,
+      "extraBends": [
+        [
+          "ForReview",
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "self-loop",
+      "areaRatio": 0.5947712418300654,
+      "extraBends": [
+        [
+          "EA",
+          2,
+          3
+        ]
+      ]
+    },
+    {
+      "name": "tight-pool",
+      "areaRatio": 1.7255639097744362,
+      "extraBends": [
+        [
+          "ReviewToDecision",
+          0,
+          1
+        ],
+        [
+          "TimeoutToEnd",
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "vertical-compact-loop",
+      "areaRatio": 0.032218442932728644,
+      "extraBends": [
+        [
+          "CloseLoop",
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "invoice-lifecycle",
+      "areaRatio": 0.7219551282051282,
+      "extraBends": [
+        [
+          "To_Review_1",
+          0,
+          1
+        ],
+        [
+          "Normal",
+          0,
+          2
+        ],
+        [
+          "To_Payment_1",
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "access-lifecycle",
+      "areaRatio": 0.7233786462758426,
+      "extraBends": [
+        [
+          "To_Security_1",
+          0,
+          1
+        ],
+        [
+          "Normal",
+          0,
+          2
+        ],
+        [
+          "To_Operations_1",
+          0,
+          1
+        ]
+      ]
+    }
+  ],
+  "exact": {
+    "incident-escalation": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "89d5cd7bc2182183e784a584d2b50f53314972258790fa855220e7751b7aa6c7"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "b65498ebd478f5299c870dfc854be29f5bc7bba0ed8fdad631b132ed938df414"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "217a5b574c4a79e7fa0e991e21652cf9300c7685684e27caf9c7d4067c7afee1",
+        "legacy": "8867f0add99bfeafd264b5b7d68105b9cb5a8f307e5d4bfe656ce61768629209"
+      }
+    },
+    "invoice-approval": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "628127dc0030fc78be6e2743f178c47d3ede5232e057a9ef0724c64c8132cdc6"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "91ea5523c074b927b74cb56967559b8ea0de715e1da3386d45444b370e323dcf"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "e68b1d83edeb85edde4031101d16ad759ebfd11b21dd947e8f16c35d39421f7c",
+        "legacy": "fa5551fc90d663f478f134f3f310a01a547fe55bc452649e9fd7f96c8a9a7ce8"
+      }
+    },
+    "tight-pool": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "aa2244295f1b728a735ee9aab287d5b062dcfc7fff589046d273b1fcead9ce10"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "f84b93072742ec34411017345588d46d19baac66c53f597e363f214f0e00bb10"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "ea540c0b26ef0a32d252ba6e4118d084787d8e2c8f4cddbc4762ac333d54565d",
+        "legacy": "e5b4e41444cecf35d2b45dfa895a3e7e8c509613b2f143140686ef7af9073b8e"
+      }
+    },
+    "timer-branch": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "460bcd79352c548542b96fd9a210409bdc36e73f26fcd820d17bd1d17dcfbd5c"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "3498fcb55319b0e1da817c11f4f52a87728e04d3a46ac547fd7c969aa70a2a52"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "ea48be700b8b50647abcdae875a709ebb6238940c20958892d8269e71017abc4",
+        "legacy": "59cefae0b3a7c765d6049c668f6a424790322fb68373859cadad20949c502646"
+      }
+    }
+  }
+}

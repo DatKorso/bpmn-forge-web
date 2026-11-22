@@ -1,6 +1,6 @@
 import { GRID, boundsOf, ceilGrid, intersects, snap, translate } from '../layout.js';
 import { contains, moveTree, right, bottom, transpose, validBox } from '../alignment-state.js';
-import { acceptsRoute, routeFlows } from '../route-flows.js';
+import { acceptsRoute, ROUTE_MARGIN, routeFlows } from '../route-flows.js';
 import { routingBounds } from '../routing-bounds.js';
 import { CONTAINER_INSET } from '../container-fit.js';
 import { isAnnotation } from '../annotation-layout.js';
@@ -25,13 +25,16 @@ function dataContacts(edges, scope, rank) {
   return contacts.sort(([a, b], [c, d]) => rank.get(a) - rank.get(c) || rank.get(b) - rank.get(d));
 }
 
-function unitParts(figure, state, attachments, toLocal) {
+function unitParts(figure, state, attachments, downstreamEvents, toLocal) {
   const { width, height } = toLocal(state.boxes.get(figure));
   const parts = [[figure, { x: 0, y: 0, width, height }]];
   const widths = attachments.map((event) => toLocal(state.boxes.get(event)).width);
   const span = widths.reduce((sum, size) => sum + size, 0);
   const gap = Math.max(0, (width - span) / (widths.length + 1));
-  let x = gap || (width - span) / 2;
+  // A solitary event can leave the host near its downstream corner.
+  const trailing = width - span - ROUTE_MARGIN;
+  const singleExit = attachments.length === 1 && downstreamEvents.has(modelOf(attachments[0]));
+  let x = singleExit && trailing > gap ? trailing : gap || (width - span) / 2;
   for (const event of attachments) {
     const { width, height: eventHeight } = toLocal(state.boxes.get(event));
     parts.push([event, { x, y: height - eventHeight / 2, width, height: eventHeight }]);
@@ -111,12 +114,16 @@ export async function arrangeScope(scope, diagram, state, gaps, diagnostics, ver
   const contacts = dataContacts(diagram.data, scope, rank);
   const dataOwners = Map.groupBy(contacts, ([, sink]) => sink);
   const attached = Map.groupBy(members.filter(({ host }) => host), ({ host }) => host);
+  const downstreamEvents = new Set(edges
+    .filter(({ sourceRef, targetRef }) => sourceRef?.attachedToRef &&
+      sourceRef.attachedToRef !== (targetRef?.attachedToRef ?? targetRef))
+    .map(({ sourceRef }) => sourceRef));
   for (const [index, figure] of members.entries()) {
     if (figure.host) continue;
     const [owner] = dataOwners.get(figure)?.[0] ?? [];
     const lane = laneOf(figure) ?? (isData(figure) ? (owner && laneOf(owner.host ?? owner)) ?? lanes[0] : undefined);
     const attachments = attached.get(figure) ?? [];
-    units.set(figure, { key: keyAt(index), parts: unitParts(figure, state, attachments, toLocal), lane });
+    units.set(figure, { key: keyAt(index), parts: unitParts(figure, state, attachments, downstreamEvents, toLocal), lane });
   }
   const scopeEdges = diagram.sequenceByModel;
   const flows = edges.map((model, index) => {
@@ -134,7 +141,9 @@ export async function arrangeScope(scope, diagram, state, gaps, diagnostics, ver
   }
   if (!units.size && !lanes.length && scope.kind === 'root') return;
   const dataEdges = contacts.map(([source, target], index) => ({ source, target, id: `d${keyAt(index)}` }));
-  const graph = orderGraph([...units.keys()], flows, dataEdges);
+  const laneRanks = new Map(lanes.map((lane, index) => [lane, index]));
+  const laneRank = (figure) => laneRanks.get(units.get(figure).lane) ?? lanes.length;
+  const graph = orderGraph([...units.keys()].toSorted((a, b) => laneRank(a) - laneRank(b)), flows, dataEdges);
   const elk = await layoutElk(graph, units, spacing, vertical);
   const geometry = new Map(elk.children?.map(({ id, ...box }) => [id, toLocal(box)]));
   const { positioned, laneBoxes, frame } = packRows(units, lanes, geometry, scope.header ?? 0, spacing, scope.expanded, vertical);

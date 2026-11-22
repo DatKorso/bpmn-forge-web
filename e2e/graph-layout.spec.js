@@ -73,6 +73,10 @@ test('collaboration refusal is atomic and explains the unsupported region', asyn
   await page.keyboard.press('Escape');
   expect(await readDiagram(page, await downloadDiagram(page))).toEqual(before);
   await expect(page.getByRole('button', { name: 'Отменить', exact: true })).toBeDisabled();
+  await expect(graphButton(page)).toHaveAccessibleDescription(/потоков сообщений.*Выровнять схему/);
+  await page.getByRole('button', { name: 'Выровнять схему' }).click();
+  await applyPreview(page);
+  await expect(summary(page)).toHaveText('Выравнивание выполнено');
 });
 
 test('accepts invalid maximum gaps and restores focus after cancellation', async ({ page }) => {

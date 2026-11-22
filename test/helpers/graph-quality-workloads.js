@@ -20,7 +20,7 @@ const scenarios = {
 
 export const graphWorkloads = Object.keys(scenarios);
 
-export function graphWorkloadXml(name) {
+export function graphWorkloadXml(name, { localEdit = false } = {}) {
   const { lanes, detour } = scenarios[name];
   const nodes = [];
   const flows = [];
@@ -41,6 +41,9 @@ export function graphWorkloadXml(name) {
     rows.set(id, lane);
     for (const [index, label] of tasks.split('|').entries()) {
       previous = link(previous, node(`${id}_${index + 1}`, label, 'userTask', lane, column++));
+      if (localEdit && lane === 2 && index === 5) {
+        previous = link(previous, node('Audit', 'Record audit evidence', 'userTask', lane, column++));
+      }
       if (lane !== 1 || index !== 2) continue;
       const split = link(previous, node('Split', 'Exception?', 'exclusiveGateway', lane, column++, undefined, ' default="Normal"'));
       const merge = node('Merge', '', 'exclusiveGateway', lane, column + 6);
