@@ -36,7 +36,7 @@ function headerBox(figure, box) {
     : { ...box, width: Math.min(box.width, figure.header) };
 }
 
-export function collaboration(figures, messageFlows) {
+export function collaboration(figures, messageFlows, pending = new Set()) {
   const pools = figures.filter(({ kind }) => kind === 'pool').sort(byId);
   const chain = new Map(figures.map((figure) => [figure, ancestors(figure)]));
   const owner = new Map(figures.map((figure) =>
@@ -51,10 +51,10 @@ export function collaboration(figures, messageFlows) {
     /(?:Task|Event)$/.test(type ?? '')).length]));
   const anchor = [...pools].sort((a, b) =>
     activity.get(b) - activity.get(a) || incident.get(b).length - incident.get(a).length || byId(a, b))[0];
-  return { pools, messages, members, chain, incident, anchor };
+  return { pools, messages, members, chain, incident, anchor, pending, figures };
 }
 
-function messageGeometry({ pools, members, chain }, boxes, { edge, sourcePool, targetPool }) {
+function messageGeometry({ pools, members, chain, pending, figures }, boxes, { edge, sourcePool, targetPool }) {
   if (!sourcePool || !targetPool || sourcePool === targetPool) return null;
   const { source, target } = edge;
   const sourceFrame = boxes.get(sourcePool);
@@ -74,13 +74,19 @@ function messageGeometry({ pools, members, chain }, boxes, { edge, sourcePool, t
     }
     const endpoint = pool === sourcePool ? source : target;
     for (const figure of members.get(pool)) {
-      if (figure.kind === 'group') continue;
+      if (figure.kind === 'group' || pending.has(figure)) continue;
       const bounds = boxes.get(figure);
       if (figure.kind === 'pool' || figure.kind === 'lane') {
         if (figure.header) obstacles.push(headerBox(figure, bounds));
       } else if (!chain.get(endpoint).includes(figure)) {
         obstacles.push(bounds);
       }
+    }
+  }
+  for (const figure of figures) {
+    if (figure.type === 'bpmn:TextAnnotation' && !pending.has(figure) &&
+        !members.get(sourcePool).includes(figure) && !members.get(targetPool).includes(figure)) {
+      obstacles.push(boxes.get(figure));
     }
   }
   const passage = passageBetween(fromFrame ? null : sourceFrame, toFrame ? null : targetFrame);

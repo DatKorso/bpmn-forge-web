@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { boundsOf, center, layoutRegion, translate } from '../src/layout.js';
+import { boundsOf, center, layoutRegion, nearestFreeBox, translate } from '../src/layout.js';
 
 const unbounded = { left: -Infinity, right: Infinity, top: -Infinity, bottom: Infinity };
 const gaps = { x: 80, y: 60 };
@@ -292,4 +292,14 @@ test('keeps the minimum space for branches and never caps a shortcut spanning mu
   assert.ok(first.x - split.x - split.width >= 60);
   assert.ok(second.x - first.x - first.width >= 60);
   assert.ok(merge.x - second.x - second.width >= 60);
+});
+
+test('finds the nearest point clear of a diagonal flow without excluding its entire bounding box', () => {
+  const diagonals = [[{ x: 0, y: 0 }, { x: 100, y: 100 }]];
+  const preferred = { x: 10, y: 70, width: 20, height: 20 };
+  assert.deepEqual(nearestFreeBox(preferred, [], null, 8, diagonals), preferred);
+  const crowded = { ...preferred, x: 40, y: 45 };
+  assert.deepEqual(nearestFreeBox(crowded, [], null, 8, diagonals), { ...crowded, x: 24.5, y: 60.5 });
+  assert.deepEqual(nearestFreeBox({ ...crowded, x: 46 }, [], null, 8,
+    [[{ x: 100, y: 0 }, { x: 0, y: 100 }]]), { ...crowded, x: 58.5, y: 57.5 });
 });

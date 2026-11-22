@@ -1,6 +1,7 @@
 import { adjacentBranches, boundsOf, ceilGrid, center, forwardFlows, intersects, layoutProcess, translate, translateWaypoints } from './layout.js';
 import { acceptsRoute, compareCosts, ROUTE_MARGIN, routeCost, routeFlows, translatedRouteIsClear } from './route-flows.js';
 import { collaboration, placePools, routeMessages } from './pool-layout.js';
+import { annotationLayout, isAnnotation, isFrame, obstructedFlows, placeAnnotations, routeAssociations } from './annotation-layout.js';
 
 const POOL_INSET = 20;
 
@@ -84,7 +85,7 @@ function makeRoom(state, diagram, figure, old, gaps) {
   const lanes = (diagram.scopes.get(figure.scope) ?? []).filter((lane) => lane.kind === 'lane');
   const siblingLane = (other) => memberLane(other, lanes, state.boxes);
   const siblings = (diagram.children.get(figure.parent) ?? []).filter((other) =>
-    other !== figure && !['lane', 'group', 'pool'].includes(other.kind) && !other.host &&
+    other !== figure && !['lane', 'group', 'pool'].includes(other.kind) && !other.host && !isAnnotation(other) &&
     siblingLane(other) === (figure.lane ?? null));
   const expanded = { ...old };
 
@@ -285,6 +286,7 @@ function planScope(diagram, state, scope, gaps) {
   const figures = diagram.scopes.get(scope) ?? [];
   const members = figures.filter((figure) => figure.kind !== 'lane' && figure.kind !== 'group');
   const boxes = members.filter((figure) => figure.kind === 'node');
+  const obstaclesInScope = members.filter((figure) => !diagram.followers.has(figure));
   if (!boxes.length) return { state };
   const lanes = figures.filter((figure) => figure.kind === 'lane')
     .sort((a, b) => descendantOf(a, b) ? -1 : descendantOf(b, a) ? 1 : byId(a, b));
@@ -324,7 +326,7 @@ function planScope(diagram, state, scope, gaps) {
       if (!validBox(bounds)) return null;
       grow(plan, diagram, scope, bounds);
     }
-    if (scopeCollisions(plan, state, members, lanes, scope)) return null;
+    if (scopeCollisions(plan, state, obstaclesInScope, lanes, scope)) return null;
     if ([...plan.boxes.values()].some((box) => !validBox(box))) return null;
     return { plan, deltas, growth: xGrowth + yGrowth };
   }
@@ -332,7 +334,7 @@ function planScope(diagram, state, scope, gaps) {
   function evaluate(candidate) {
     if (!candidate) return null;
     const { plan } = candidate;
-    const obstacles = members.map((figure) => plan.boxes.get(figure));
+    const obstacles = obstaclesInScope.map((figure) => plan.boxes.get(figure));
     for (const lane of lanes) {
       const box = toLocal(plan.boxes.get(lane));
       if (lane.header) obstacles.push(toLocal({ ...box, width: Math.min(lane.header, box.width) }));
@@ -478,8 +480,12 @@ function newOverlap(state, original, figure, others) {
     !intersects(original.boxes.get(figure), original.boxes.get(other)));
 }
 
-function indexDiagram(figures, edges, auxiliary) {
+function indexDiagram(figures, edges, auxiliary, canMove = () => true) {
+  const notes = annotationLayout(figures, auxiliary);
+  const followers = new Set(notes.annotations.filter((note) => [...notes.anchors.get(note)].some(canMove)));
   return {
+    notes,
+    followers,
     edges,
     internalEdges: [...edges, ...auxiliary],
     children: Map.groupBy(figures, (figure) => figure.parent),
@@ -526,7 +532,7 @@ export function planAlignment({ root, figures, edges, messageFlows = [], auxilia
   }
 
   if (pools.length > 1 || messageFlows.length) {
-    const collab = collaboration(figures, messageFlows);
+    const collab = collaboration(figures, messageFlows, diagram.followers);
     const placed = placePools(collab, state, initial, gaps, (next, pool, delta) => moveTree(next, diagram, pool, delta));
     if (placed.state) {
       state = { boxes: placed.state.boxes, routes: new Map([...placed.state.routes, ...placed.routes]) };
@@ -538,14 +544,15 @@ export function planAlignment({ root, figures, edges, messageFlows = [], auxilia
       state = routes ? { boxes: state.boxes, routes: new Map([...state.routes, ...routes]) } : initial;
     }
   }
-  return { ...changes(state), skipped: [...skipped].map(([scope, reason]) => ({ scope, reason })) };
+  const finished = finishAnnotations(diagram, state, initial, messageFlows, gaps);
+  if (!finished) return { ...changes(initial), skipped: [], reason: 'annotations' };
+  return { ...changes(finished), skipped: [...skipped].map(([scope, reason]) => ({ scope, reason })) };
 }
 
 export function alignmentSelection(diagram, elements) {
   const byElement = new Map(diagram.figures.map((figure) => [figure.element, figure]));
   const selected = [...new Set(elements.map((element) => element.labelTarget ?? element))];
   const figures = selected.map((element) => byElement.get(element));
-  const isContainer = (figure) => figure.kind === 'pool' || figure.kind === 'lane' || figure.expanded;
   if (!figures.length) return { reason: 'Выберите пул, дорожку, раскрытый подпроцесс или несколько фигур.' };
   const pools = figures.filter((figure) => figure?.kind === 'pool');
   if (pools.length && pools.length !== figures.length) {
@@ -559,13 +566,13 @@ export function alignmentSelection(diagram, elements) {
 
   const members = figures.filter((figure) => !figure.host);
   const [first] = members;
-  if (members.length === 1 && isContainer(first)) {
+  if (members.length === 1 && isFrame(first)) {
     const scope = first.kind === 'lane' ? first.scope : first;
     const contents = diagram.figures.filter((figure) => figure.kind === 'node' && figure.scope === scope &&
       (first.kind !== 'lane' || figure.lane && (figure.lane === first || descendantOf(figure.lane, first))));
-    return contents.length ? { scope, members: contents } : { reason: 'В выбранной области нет фигур для выравнивания.' };
+    return contents.length ? { scope, members: contents, container: first } : { reason: 'В выбранной области нет фигур для выравнивания.' };
   }
-  if (members.some(isContainer)) return { reason: 'Выберите один контейнер или несколько отдельных фигур.' };
+  if (members.some(isFrame)) return { reason: 'Выберите один контейнер или несколько отдельных фигур.' };
   if (members.length < 2) return { reason: 'Выберите хотя бы две фигуры.' };
   if (members.some((figure) => figure.scope !== first.scope)) {
     return { reason: 'Фигуры должны принадлежать одному процессу или подпроцессу.' };
@@ -598,7 +605,7 @@ function offsets(areas, axis, obstacles) {
     .sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
 }
 
-function fixedRoutes(diagram, state, boxes, movable) {
+function fixedRoutes(diagram, state, boxes, movable, finalAnnotations = false) {
   const affected = diagram.edges.filter(({ source, target }) =>
     boxes.has(source) || boxes.has(target) || movable?.has(source) || movable?.has(target));
   const result = new Map();
@@ -606,13 +613,19 @@ function fixedRoutes(diagram, state, boxes, movable) {
     const flip = scope.horizontal === false;
     const local = flip ? transpose : (box) => box;
     const members = diagram.scopes.get(scope) ?? [];
-    const obstacles = members.filter((figure) => figure.kind !== 'lane' && figure.kind !== 'group')
-      .map((figure) => state.boxes.get(figure));
+    const frame = state.boxes.get(scope);
+    const obstacles = members.filter((figure) => figure.kind !== 'lane' && figure.kind !== 'group' &&
+      (finalAnnotations || !diagram.followers.has(figure))).map((figure) => state.boxes.get(figure));
+    if (finalAnnotations && frame) {
+      for (const note of diagram.notes.annotations) {
+        const box = state.boxes.get(note);
+        if (note.scope !== scope && contains(frame, box)) obstacles.push(box);
+      }
+    }
     for (const lane of members.filter((figure) => figure.kind === 'lane')) {
       const box = local(state.boxes.get(lane));
       obstacles.push(local({ ...box, width: lane.header }));
     }
-    const frame = state.boxes.get(scope);
     const drawing = frame ?? boundsOf(obstacles);
     const pad = frame ? 0 : ROUTE_MARGIN * 2;
     const bounds = { left: drawing.x - pad + (frame && !flip ? scope.header : 0),
@@ -651,19 +664,24 @@ function unitsOverlap(units, boxes) {
 
 export function planSelection(snapshot, selection, gaps) {
   const { figures, edges, messageFlows = [], auxiliary = [] } = snapshot;
-  const diagram = indexDiagram(figures, edges, auxiliary);
-  const collab = collaboration(figures, messageFlows);
+  const selected = selection.pools ?? new Set(selection.members);
+  const diagram = indexDiagram(figures, edges, auxiliary, (anchor) =>
+    selected.has(anchor.host ?? anchor) || [...selected].some((figure) => descendantOf(anchor, figure)));
+  const collab = collaboration(figures, messageFlows, diagram.followers);
   const initial = { boxes: new Map(figures.map((figure) => [figure, figure.box])), routes: new Map() };
   if (selection.pools) {
     const placed = placePools(collab, initial, initial, gaps,
       (next, pool, delta) => moveTree(next, diagram, pool, delta), selection.pools);
     if (!placed.state) return { reason: placed.reason === 'stability' ? 'poolStability' : 'poolRouting' };
-    return changes({ boxes: placed.state.boxes, routes: new Map([...placed.state.routes, ...placed.routes]) });
+    const state = { boxes: placed.state.boxes, routes: new Map([...placed.state.routes, ...placed.routes]) };
+    const finished = finishAnnotations(diagram, state, initial, messageFlows, gaps, selection);
+    return finished ? changes(finished) : { reason: 'annotations' };
   }
   return planProcessSelection(snapshot, diagram, collab, initial, selection, gaps);
 }
 
-function planProcessSelection({ figures, edges }, diagram, collab, initial, { scope, members }, gaps) {
+function planProcessSelection({ figures, edges, messageFlows = [] }, diagram, collab, initial, selection, gaps) {
+  const { scope, members } = selection;
   const flip = scope.horizontal === false;
   const local = flip ? transpose : (box) => box;
   const world = flip ? ({ x, y }) => ({ x: y, y: x }) : (delta) => delta;
@@ -677,7 +695,7 @@ function planProcessSelection({ figures, edges }, diagram, collab, initial, { sc
   const laneBounds = lanes.map(({ box }) => local(box));
   const movable = new Set(members);
   const stationary = scoped.filter((figure) => figure.kind !== 'lane' && figure.kind !== 'group' &&
-    !movable.has(figure.host ?? figure));
+    !movable.has(figure.host ?? figure) && !diagram.followers.has(figure));
   const obstacles = stationary.map(({ box }) => local(box));
   const units = members.map((figure) => {
     const lane = memberLane(figure, lanes, initial.boxes);
@@ -745,16 +763,21 @@ function planProcessSelection({ figures, edges }, diagram, collab, initial, { sc
     const deltas = layoutProcess(units, graph, minimums, { compact });
     for (const candidate of placements(deltas)) {
       const routes = allRoutes(candidate);
-      if (routes) {
-        base = { ...candidate, routes, compact };
+      if (!routes) {
+        if (reason !== 'annotations') reason = 'routing';
+        continue;
+      }
+      const finished = finishAnnotations(diagram, { boxes: candidate.state.boxes, routes }, initial, messageFlows, gaps, selection);
+      if (finished) {
+        base = { ...candidate, compact, result: changes(finished) };
         break;
       }
-      reason = 'routing';
+      reason = 'annotations';
     }
     if (base) break;
   }
   if (!base) return { reason };
-  if (spacing.maxX === undefined && spacing.maxY === undefined) return { boxes: base.boxes, routes: base.routes };
+  if (spacing.maxX === undefined && spacing.maxY === undefined) return base.result;
 
   const sequence = new Set(edges);
   const { layouts, excess } = spacingLayouts(units, graph, spacing, { compact: base.compact });
@@ -763,9 +786,9 @@ function planProcessSelection({ figures, edges }, diagram, collab, initial, { sc
   const movement = (boxes) => [...boxes].reduce((total, [{ box }, next]) =>
     total + Math.abs(next.x - box.x) + Math.abs(next.y - box.y), 0);
   const baseline = { ...base, excess: excess(base.state, local) };
-  if (!baseline.excess) return { boxes: base.boxes, routes: base.routes };
+  if (!baseline.excess) return base.result;
   const baseRoutes = allRoutes(base, movableParts);
-  if (!baseRoutes) return { boxes: base.boxes, routes: base.routes };
+  if (!baseRoutes) return base.result;
   baseline.cost = [...routeCost(baseRoutes.values()), movement(base.boxes)];
   const fixedUnits = stationary.filter((figure) => figure.kind === 'node').map((figure) => ({
     lane: figure.lane,
@@ -787,11 +810,142 @@ function planProcessSelection({ figures, edges }, diagram, collab, initial, { sc
       if (!routes) continue;
       candidate.cost = [...routeCost(routes.values()), movement(candidate.boxes)];
       if (preferSpacing(candidate, baseline, best)) {
-        best = { ...candidate, routes: new Map([...routes].filter(([edge]) =>
-          !sequence.has(edge) || candidate.boxes.has(edge.source) || candidate.boxes.has(edge.target))) };
+        const filtered = new Map([...routes].filter(([edge]) =>
+          !sequence.has(edge) || candidate.boxes.has(edge.source) || candidate.boxes.has(edge.target)));
+        const finished = finishAnnotations(diagram, { boxes: candidate.state.boxes, routes: filtered },
+          initial, messageFlows, gaps, selection);
+        if (!finished) continue;
+        best = { ...candidate, result: changes(finished) };
       }
       break;
     }
   }
-  return { boxes: best.boxes, routes: best.routes };
+  return best.result;
+}
+
+function growAnnotationArea(diagram, state, { note, containers }, gaps, selection) {
+  const frame = containers.at(-1);
+  if (!frame || (selection && frame !== selection.container && !selection.pools?.has(frame))) return false;
+  const cross = frame.horizontal === false ? 'x' : 'y';
+  const span = cross === 'x' ? 'width' : 'height';
+  const end = cross === 'x' ? right : bottom;
+
+  function extend(container, amount) {
+    const old = state.boxes.get(container);
+    const next = { ...old, [span]: old[span] + amount };
+    if (!validBox(next)) return false;
+    let required = end(next);
+
+    if (container.kind === 'lane') {
+      const siblings = (diagram.scopes.get(container.scope) ?? []).filter((lane) =>
+        lane.kind === 'lane' && lane !== container && lane.parent === container.parent)
+        .sort((a, b) => state.boxes.get(a)[cross] - state.boxes.get(b)[cross] || byId(a, b));
+      for (const lane of siblings) {
+        const box = state.boxes.get(lane);
+        if (box[cross] < end(old) || box[cross] >= required) continue;
+        if (selection) return false;
+        shiftLane(diagram, state, lane, { x: 0, y: 0, [cross]: ceilGrid(required - box[cross]) });
+        required = end(state.boxes.get(lane));
+      }
+    }
+
+    const parent = container.kind === 'lane' ? (container.parent?.kind === 'lane' ? container.parent : container.scope)
+      : container.expanded ? (container.lane ?? container.scope) : null;
+    if (state.boxes.has(parent)) {
+      const margin = container.expanded ? ROUTE_MARGIN : 0;
+      const extra = ceilGrid(required + margin - end(state.boxes.get(parent)));
+      if (extra > 0 && (selection || !extend(parent, extra))) return false;
+    }
+
+    grow(state, diagram, container, next);
+    if (!selection && container.expanded) makeRoom(state, diagram, container, old, gaps);
+    return true;
+  }
+
+  return extend(frame, ceilGrid(note.box[span] + ROUTE_MARGIN * 2));
+}
+
+function shiftLane(diagram, state, lane, delta) {
+  const scoped = diagram.scopes.get(lane.scope);
+  const lanes = scoped.filter((figure) => figure.kind === 'lane')
+    .sort((a, b) => descendantOf(a, b) ? -1 : descendantOf(b, a) ? 1 : byId(a, b));
+  const members = scoped.filter((figure) => figure.kind !== 'lane' && !figure.host)
+    .filter((figure) => {
+      const owner = memberLane(figure, lanes, state.boxes);
+      return owner && (owner === lane || descendantOf(owner, lane)) && !descendantOf(figure, lane);
+    });
+  moveTree(state, diagram, lane, delta);
+  for (const figure of members) moveTree(state, diagram, figure, delta);
+}
+
+function finishAnnotations(diagram, planned, initial, messageFlows, gaps, selection) {
+  const { notes } = diagram;
+  if (!notes.annotations.length && !notes.associations.length) return planned;
+  const state = clone(planned);
+  const explicit = new Set(selection?.members?.filter(isAnnotation));
+  const flows = [...diagram.edges, ...messageFlows, ...diagram.internalEdges.filter((edge) =>
+    !diagram.edges.includes(edge) && edge.type !== 'bpmn:Association')];
+  const flexible = new Set();
+  for (let attempt = 0; attempt <= notes.annotations.length; attempt++) {
+    let placed = clone(state);
+    let blocked = placeAnnotations(notes, placed, flows, explicit);
+    if (blocked && !blocked.fixed && flexible.size) {
+      // A flow can run through the new strip before its annotation is placed.
+      placed = clone(state);
+      blocked = placeAnnotations(notes, placed, flows.filter((edge) => !flexible.has(edge)), explicit);
+    }
+    if (!blocked) {
+      const obstructed = obstructedFlows(notes, placed, flows);
+      if (obstructed.length) {
+        const collab = collaboration(notes.figures, messageFlows);
+        const routes = fixedRoutes({ ...diagram, edges: obstructed.filter((edge) => diagram.edges.includes(edge)) },
+          placed, new Map(), new Set(obstructed.flatMap(({ source, target }) => [source, target])), true);
+        const messages = obstructed.some((edge) => messageFlows.includes(edge))
+          ? routeMessages(collab, placed, initial, { selection: Boolean(selection) })
+          : new Map();
+        if (!routes || !messages) return null;
+        placed.routes = new Map([...placed.routes, ...routes, ...messages]);
+        if (obstructedFlows(notes, placed, flows).length) return null;
+      }
+      if (!routeAssociations(notes, placed) || [...placed.boxes.values()].some((box) => !validBox(box)) ||
+          [...placed.routes.values()].some((path) => path.some(({ x, y }) =>
+            ![x, y].every((value) => Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER)))) return null;
+      return placed;
+    }
+    if (blocked.fixed || attempt === notes.annotations.length) return null;
+    const before = clone(state);
+    if (!growAnnotationArea(diagram, state, blocked, gaps, selection)) return null;
+    const collab = collaboration(notes.figures, messageFlows, diagram.followers);
+    const overlaps = collab.pools.some((pool, index) => collab.pools.slice(index + 1).some((other) =>
+      intersects(state.boxes.get(pool), state.boxes.get(other))));
+    if (overlaps) {
+      if (selection) return null;
+      const next = placePools(collab, state, initial, gaps, (plan, pool, shift) => moveTree(plan, diagram, pool, shift));
+      if (!next.state) return null;
+      state.boxes = next.state.boxes;
+      state.routes = new Map([...next.state.routes, ...next.routes]);
+    }
+    const modified = new Map([...state.boxes].filter(([figure, box]) => !sameBox(before.boxes.get(figure), box)));
+    const frames = notes.figures.filter(isFrame);
+    for (const [figure, box] of modified) {
+      if (diagram.followers.has(figure)) continue;
+      if (newOverlap(state, before, figure, (diagram.children.get(figure.parent) ?? [])
+        .filter((other) => !diagram.followers.has(other))) ||
+          frames.some((container) => (figure.scope === container || figure.lane === container ||
+            descendantOf(figure, container)) && contains(before.boxes.get(container), before.boxes.get(figure)) &&
+            !contains(state.boxes.get(container), box))) return null;
+    }
+    const affected = new Set(diagram.edges.filter(({ source, target }) => modified.has(source) || modified.has(target) ||
+      [...modified.keys()].some((figure) => isFrame(figure) && (source.scope === figure || source.scope === figure.scope)))
+      .flatMap(({ source, target }) => [source, target]));
+    const routes = fixedRoutes(diagram, state, modified, affected);
+    const messages = routeMessages(collab, state, initial, { selection: Boolean(selection) });
+    if (!routes || !messages) return null;
+    for (const edge of routes.keys()) flexible.add(edge);
+    for (const edge of messageFlows) {
+      if (modified.has(edge.source) || modified.has(edge.target)) flexible.add(edge);
+    }
+    state.routes = new Map([...state.routes, ...routes, ...messages]);
+  }
+  return null;
 }

@@ -719,3 +719,214 @@ test('aligns the contents of one selected pool inside its existing frame', () =>
   assert.equal(center(finalBox(plan, start), 'y'), center(finalBox(plan, end), 'y'));
   assert.ok(plan.routes.has(message));
 });
+
+function annotate(d, id, bounds, anchor, options = {}) {
+  const { reverse, ...figure } = options;
+  const note = d.add(id, bounds, { kind: 'artifact', type: 'bpmn:TextAnnotation', ...figure });
+  const association = associate(d, reverse ? note : anchor, reverse ? anchor : note);
+  return { note, association };
+}
+
+function associate(d, source, target) {
+  const edge = { id: source.id + '_' + target.id, type: 'bpmn:Association', source, target };
+  (d.auxiliary ??= []).push(edge);
+  return edge;
+}
+
+function delta(plan, figure) {
+  const { x, y } = finalBox(plan, figure);
+  return { x: x - figure.box.x, y: y - figure.box.y };
+}
+
+function assertDocked(plan, edge, obstacles = []) {
+  const points = plan.routes.get(edge);
+  const onBoundary = ({ x, y }, bounds) => x >= bounds.x && x <= bounds.x + bounds.width &&
+    y >= bounds.y && y <= bounds.y + bounds.height &&
+    (x === bounds.x || x === bounds.x + bounds.width || y === bounds.y || y === bounds.y + bounds.height);
+  assert.ok(points?.length >= 2, edge.id);
+  assert.ok(onBoundary(points[0], finalBox(plan, edge.source)), edge.id);
+  assert.ok(onBoundary(points.at(-1), finalBox(plan, edge.target)), edge.id);
+  assert.ok(obstacles.every((figure) => points.slice(1).every((point, i) =>
+    !cutsInterior(points[i], point, finalBox(plan, figure)))), edge.id);
+}
+
+test('moves an annotation by its anchor delta and leaves an unrelated annotation in place', () => {
+  const d = diagram();
+  const a = d.add('A', box(103, 103));
+  const b = d.add('B', box(373, 133));
+  d.connect(a, b);
+  const { note, association } = annotate(d, 'Note', box(90, 10, 100, 40), a);
+  const fixed = d.add('Unlinked', box(250, -50, 100, 40), { kind: 'artifact', type: 'bpmn:TextAnnotation' });
+
+  const plan = planAlignment(d, gaps);
+  assert.equal(plan.reason, undefined);
+  assert.notDeepEqual(delta(plan, a), { x: 0, y: 0 });
+  assert.deepEqual(delta(plan, note), delta(plan, a));
+  assert.equal(plan.boxes.has(fixed), false);
+  assertDocked(plan, association, [b]);
+  apply(plan);
+  const repeated = planAlignment(d, gaps);
+  assert.equal(repeated.boxes.size, 0);
+  assert.deepEqual(repeated.routes.get(association), undefined);
+});
+
+test('places nearby annotations in order around labels, figures and each other', () => {
+  const d = diagram();
+  const a = d.add('A', box(103, 103));
+  const b = d.add('B', box(373, 133));
+  d.connect(a, b);
+  const { note: first, association } = annotate(d, 'First', box(100, 20, 60, 40), a);
+  const { note: second } = annotate(d, 'Second', box(112, 30, 60, 40), a);
+  const plain = planAlignment({ ...d, figures: [a, b], auxiliary: [] }, gaps);
+  const target = translate(first.box, delta(plain, a));
+  const obstacle = d.add('Obstacle', box(target.x + 45, target.y, 60, 40), { kind: 'artifact',
+    labels: [box(target.x + 45, target.y - 40, 60, 35)] });
+
+  const plan = planAlignment(d, gaps);
+  assert.equal(plan.reason, undefined);
+  assert.deepEqual(finalBox(plan, first), translate(target, { x: -23, y: 0 }));
+  assert.equal(intersects(finalBox(plan, first), finalBox(plan, second)), false);
+  assert.equal(intersects(finalBox(plan, second), obstacle.labels[0]), false);
+  assertDocked(plan, association, [obstacle, second]);
+});
+
+test('uses the nearest moving anchor for reverse and multiple associations, breaking ties by BPMN ID', () => {
+  const d = diagram();
+  const left = d.add('Z', box(103, 103));
+  const right = d.add('A', box(367, 103));
+  d.connect(left, right);
+  const { note, association } = annotate(d, 'Note', box(255, 10, 60, 40), left, { reverse: true });
+  const other = associate(d, right, note);
+
+  const plan = planAlignment(d, gaps);
+  assert.equal(plan.reason, undefined);
+  assert.notDeepEqual(delta(plan, left), delta(plan, right));
+  assert.deepEqual(delta(plan, note), delta(plan, right));
+  assertDocked(plan, association);
+  assertDocked(plan, other);
+});
+
+test('keeps a collaboration annotation within the pool and subprocess of its anchor', () => {
+  const d = diagram();
+  const pool = d.add('Pool', box(0, 0, 550, 420), { kind: 'pool', header: 30, horizontal: true });
+  const subprocess = d.add('Subprocess', box(60, 50, 440, 300), { scope: pool, expanded: true });
+  const a = d.add('A', box(103, 173), { scope: subprocess });
+  const b = d.add('B', box(365, 193), { scope: subprocess });
+  d.connect(a, b);
+  const { note, association } = annotate(d, 'CollaborationNote', box(110, 85, 70, 50), a);
+
+  const plan = planAlignment(d, gaps);
+  assert.equal(plan.reason, undefined);
+  assert.notDeepEqual(delta(plan, note), { x: 0, y: 0 });
+  const rect = finalBox(plan, subprocess);
+  assert.deepEqual(boundsOf([rect, finalBox(plan, note)]), rect);
+  assert.equal(note.parent, d.root);
+  assertDocked(plan, association);
+});
+
+for (const horizontal of [true, false]) {
+  test(`grows the ${horizontal ? 'bottom of a horizontal' : 'right of a vertical'} lane and shifts its neighbor with its contents`, () => {
+    const d = diagram();
+    const orient = (x, y, width, height) => horizontal ? box(x, y, width, height) : box(y, x, height, width);
+    const pool = d.add('Pool', orient(0, 0, 420, 300), { kind: 'pool', header: 30, horizontal });
+    const lane = d.add('Lane', orient(30, 0, 390, 150), { kind: 'lane', scope: pool, header: 30, horizontal });
+    const neighbor = d.add('Neighbor', orient(30, 150, 390, 150), {
+      kind: 'lane', scope: pool, header: 30, horizontal
+    });
+    const a = d.add('A', orient(87, 38, 100, 70), { scope: pool, lane });
+    const b = d.add('B', orient(250, 50, 100, 70), { scope: pool, lane });
+    const fixed = d.add('Fixed', orient(100, 190, 80, 60), { scope: pool, lane: neighbor });
+    d.connect(a, b);
+    const crossLane = d.connect(b, fixed);
+    const { note, association } = annotate(d, 'Note', orient(72, 12, 300, 110), a, { scope: pool });
+
+    const plan = planAlignment(d, gaps);
+    assert.equal(plan.reason, undefined);
+    const span = horizontal ? 'height' : 'width';
+    const axis = horizontal ? 'y' : 'x';
+    assert.ok(finalBox(plan, lane)[span] > lane.box[span]);
+    assert.ok(finalBox(plan, pool)[span] > pool.box[span]);
+    assert.ok(delta(plan, neighbor)[axis] > 0);
+    assert.equal(delta(plan, neighbor)[axis], delta(plan, fixed)[axis]);
+    assert.equal(intersects(finalBox(plan, a), finalBox(plan, note)), false);
+    assertDocked(plan, association, [b]);
+    assertDocked(plan, crossLane, [note, a]);
+    apply(plan);
+    const repeated = planAlignment(d, gaps);
+    assert.equal(repeated.reason, undefined);
+    assert.equal(repeated.boxes.size, 0);
+    for (const [edge, points] of repeated.routes) assert.deepEqual(points, edge.points);
+  });
+}
+
+test('grows a nested subprocess to hold an annotation in a new strip', () => {
+  const d = diagram();
+  const outer = d.add('Outer', box(0, 0, 520, 235), { expanded: true, horizontal: true });
+  const inner = d.add('Inner', box(30, 30, 420, 165), { scope: outer, expanded: true, horizontal: true });
+  const a = d.add('A', box(71, 77), { scope: inner });
+  const b = d.add('B', box(277, 86), { scope: inner });
+  d.connect(a, b);
+  const { note, association } = annotate(d, 'Note', box(51, 45, 340, 115), a, { scope: inner });
+
+  const plan = planAlignment(d, gaps);
+  assert.equal(plan.reason, undefined);
+  assert.ok(finalBox(plan, inner).height > inner.box.height);
+  assert.ok(finalBox(plan, outer).height > outer.box.height);
+  assert.deepEqual(boundsOf([finalBox(plan, inner), finalBox(plan, note)]), finalBox(plan, inner));
+  assertDocked(plan, association, [b]);
+});
+
+test('selection moves an unselected annotation and leaves neighboring figures fixed', () => {
+  const d = diagram();
+  const a = d.add('A', box(103, 103));
+  const b = d.add('B', box(373, 133));
+  const fixed = d.add('Fixed', box(400, 300));
+  d.connect(a, b);
+  const { note, association } = annotate(d, 'Note', box(90, 10, 100, 40), a);
+
+  const plan = planSelection(d, alignmentSelection(d, [a.element, b.element]), gaps);
+  assert.equal(plan.reason, undefined);
+  assert.notDeepEqual(delta(plan, a), { x: 0, y: 0 });
+  assert.deepEqual(delta(plan, note), delta(plan, a));
+  assert.equal(plan.boxes.has(fixed), false);
+  assertDocked(plan, association, [b, fixed]);
+});
+
+test('only an explicitly selected container can grow for its annotation', () => {
+  const d = diagram();
+  const pool = d.add('Pool', box(0, 0, 420, 160), { kind: 'pool', header: 30, horizontal: true });
+  const a = d.add('A', box(87, 40, 100, 70), { scope: pool });
+  const b = d.add('B', box(250, 52, 100, 70), { scope: pool });
+  d.connect(a, b);
+  const fixed = d.add('OtherPool', box(0, 320, 420, 180), { kind: 'pool', header: 30, horizontal: true });
+  const { note, association } = annotate(d, 'Note', box(62, 25, 300, 100), a, { scope: pool });
+  const source = d.figures.map(({ box }) => ({ ...box }));
+
+  const refused = planSelection(d, alignmentSelection(d, [a.element, b.element]), gaps);
+  assert.deepEqual(refused, { reason: 'annotations' });
+  assert.deepEqual(d.figures.map(({ box }) => box), source);
+  assert.equal(association.points, undefined);
+
+  const plan = planSelection(d, alignmentSelection(d, [pool.element]), gaps);
+  assert.equal(plan.reason, undefined);
+  assert.ok(finalBox(plan, pool).height > pool.box.height);
+  assert.equal(plan.boxes.has(fixed), false);
+  assert.equal(intersects(finalBox(plan, note), finalBox(plan, a)), false);
+  assertDocked(plan, association, [b]);
+
+  fixed.box = box(0, 165, 420, 180);
+  assert.deepEqual(planSelection(d, alignmentSelection(d, [pool.element]), gaps), { reason: 'annotations' });
+});
+
+test('refuses an impossible full annotation layout without applying any geometry', () => {
+  const d = diagram();
+  const pool = d.add('Pool', box(0, 0, 420, 160), { kind: 'pool', header: 30, horizontal: true });
+  const a = d.add('A', box(87, 40, 100, 70), { scope: pool });
+  const b = d.add('B', box(250, 52, 100, 70), { scope: pool });
+  d.connect(a, b);
+  annotate(d, 'Oversized', box(10, 25, 500, 100), a, { scope: pool });
+  const plan = planAlignment(d, gaps);
+  assert.equal(plan.reason, 'annotations');
+  assert.equal(plan.boxes.size, 0);
+  assert.equal(plan.routes.size, 0);
+});

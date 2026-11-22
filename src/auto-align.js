@@ -1,6 +1,7 @@
 import { getDi, is } from 'bpmn-js/lib/util/ModelUtil';
 import { isExpanded, isHorizontal } from 'bpmn-js/lib/util/DiUtil';
 import { collectLanes, getLanesRoot, LANE_INDENTATION } from 'bpmn-js/lib/features/modeling/util/LaneUtil';
+import { getLabelAdjustment } from 'bpmn-js/lib/features/modeling/behavior/util/LabelLayoutUtil';
 import { isDirectionHorizontal } from 'bpmn-js/lib/features/modeling/util/ModelingUtil';
 import { alignmentSelection, planAlignment, planSelection } from './alignment-plan.js';
 import { translate, translateWaypoints } from './layout.js';
@@ -8,6 +9,7 @@ import { translate, translateWaypoints } from './layout.js';
 const COMMAND = 'editor.autoAlign';
 const SKIP_REASONS = {
   bounds: 'раскладка выходит за допустимые координаты',
+  annotations: 'не удалось разместить связанные аннотации без наложений',
   collisions: 'не удалось разместить фигуры без наложений в своих областях',
   poolStability: 'расстановка пулов пропущена: не достигнуто устойчивое положение',
   poolRouting: 'расстановка пулов пропущена: не удалось разместить пулы и провести потоки сообщений',
@@ -41,6 +43,7 @@ function snapshot(root, shapes, elementRegistry) {
     element,
     kind: figureKind(element),
     box: getBounds(element),
+    labels: element.labels.filter((label) => !label.hidden).map(getBounds),
     expanded: is(element, 'bpmn:SubProcess') && isExpanded(element)
   }]));
   const laneCache = new Map();
@@ -74,8 +77,12 @@ function snapshot(root, shapes, elementRegistry) {
       const group = is(connection, 'bpmn:SequenceFlow') ? edges :
         is(connection, 'bpmn:MessageFlow') ? messageFlows : auxiliary;
       group.push({
-        id: connection.id, connection, source, target, points: connection.waypoints,
-        isDefault: element.businessObject.default === connection.businessObject
+        id: connection.id, type: connection.type, connection, source, target, points: connection.waypoints,
+        isDefault: element.businessObject.default === connection.businessObject,
+        projectLabels: (points) => connection.labels.filter((label) => !label.hidden).map((label) =>
+          points && !sameWaypoints(connection.waypoints, points)
+            ? translate(label, getLabelAdjustment(label, points, connection.waypoints, {}))
+            : getBounds(label))
       });
     }
   }
@@ -245,6 +252,7 @@ class AutoAlign {
     for (const [root, shapes] of this.shapesByRoot()) {
       const diagram = snapshot(root, shapes, this.elementRegistry);
       const plan = planAlignment(diagram, gaps);
+      if (plan.reason) return { reason: SKIP_REASONS[plan.reason] };
       for (const [{ element, box, kind }, next] of plan.boxes) {
         bounds.set(element, next);
         const delta = { x: next.x - box.x, y: next.y - box.y };

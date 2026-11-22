@@ -37,6 +37,91 @@ export function boundsOf(rects) {
   };
 }
 
+export function nearestFreeBox(preferred, obstacles, limits, clearance, diagonals = []) {
+  const { width, height } = preferred;
+  const minX = limits?.x ?? -Infinity;
+  const minY = limits?.y ?? -Infinity;
+  const maxX = limits ? right(limits) - width : Infinity;
+  const maxY = limits ? bottom(limits) - height : Infinity;
+  if (minX > maxX || minY > maxY) return null;
+
+  // Expand each obstacle into the range of top-left positions it blocks.
+  const blocked = obstacles.map((box) => ({
+    left: box.x - clearance - width, right: right(box) + clearance,
+    top: box.y - clearance - height, bottom: bottom(box) + clearance
+  }));
+  const xEdges = blocked.flatMap(({ left, right }) => [left, right]);
+  const yEdges = blocked.flatMap(({ top, bottom }) => [top, bottom]);
+  const polygons = diagonals.map(([a, b]) => sweptBox(a, b, width, height, clearance));
+  const slanted = (x, y) => polygons.some((edges) => edges.every(([a, b]) =>
+    (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x) >
+      EPSILON * Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y))));
+  const candidates = (value, min, max, edges) => [...new Set([
+    Math.max(min, Math.min(value, max)), ...edges
+  ])].filter((coordinate) => coordinate >= min && coordinate <= max)
+    .sort((a, b) => Math.abs(a - value) - Math.abs(b - value) || a - b);
+
+  let best = null;
+  let distance = Infinity;
+  for (const x of candidates(preferred.x, minX, maxX, xEdges)) {
+    const dx = (x - preferred.x) ** 2;
+    if (dx >= distance) break;
+    const active = blocked.filter(({ left, right }) => x > left && x < right);
+    for (const y of candidates(preferred.y, minY, maxY, active.flatMap(({ top, bottom }) => [top, bottom]))) {
+      const cost = dx + (y - preferred.y) ** 2;
+      if (cost >= distance) break;
+      if (active.some(({ top, bottom }) => y > top && y < bottom) || slanted(x, y)) continue;
+      best = { x, y, width, height };
+      distance = cost;
+      break;
+    }
+  }
+
+  if (polygons.length && distance > 0) {
+    const edges = polygons.flat();
+    function consider(x, y) {
+      const cost = (x - preferred.x) ** 2 + (y - preferred.y) ** 2;
+      if (cost >= distance || x < minX || x > maxX || y < minY || y > maxY || slanted(x, y) ||
+          blocked.some(({ left, right, top, bottom }) => x > left && x < right && y > top && y < bottom)) return;
+      best = { x, y, width, height };
+      distance = cost;
+    }
+    // A minimum on a blocked boundary is its projection, a vertex, or an intersection.
+    for (const [index, [a, b]] of edges.entries()) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const at = (t) => {
+        if (t >= 0 && t <= 1) consider(a.x + dx * t, a.y + dy * t);
+      };
+      consider(a.x, a.y);
+      at(((preferred.x - a.x) * dx + (preferred.y - a.y) * dy) / (dx ** 2 + dy ** 2));
+      if (dx) for (const x of [...xEdges, minX, maxX]) at((x - a.x) / dx);
+      if (dy) for (const y of [...yEdges, minY, maxY]) at((y - a.y) / dy);
+      for (const [c, d] of edges.slice(index + 1)) {
+        const ux = d.x - c.x;
+        const uy = d.y - c.y;
+        const determinant = dx * uy - dy * ux;
+        if (!determinant) continue;
+        const u = ((c.x - a.x) * dy - (c.y - a.y) * dx) / determinant;
+        if (u >= 0 && u <= 1) at(((c.x - a.x) * uy - (c.y - a.y) * ux) / determinant);
+      }
+    }
+  }
+  return best;
+}
+
+function sweptBox(first, second, width, height, margin) {
+  const [a, b] = first.x < second.x ? [first, second] : [second, first];
+  const corners = ({ x, y }) => [
+    { x: x - width - margin, y: y - height - margin }, { x: x + margin, y: y - height - margin },
+    { x: x + margin, y: y + margin }, { x: x - width - margin, y: y + margin }
+  ];
+  const [aTL, aTR, aBR, aBL] = corners(a);
+  const [bTL, bTR, bBR, bBL] = corners(b);
+  const points = a.y < b.y ? [aTL, aTR, bTR, bBR, bBL, aBL] : [aTL, bTL, bTR, bBR, aBR, aBL];
+  return points.map((point, i) => [point, points[(i + 1) % points.length]]);
+}
+
 const compareIds = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 
 function clusterColumns(units, rows) {
