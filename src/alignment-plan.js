@@ -1,9 +1,9 @@
 import { adjacentBranches, boundsOf, ceilGrid, center, forwardFlows, intersects, layoutProcess, snap, translate, translateWaypoints } from './layout.js';
-import { acceptsRoute, compareCosts, ROUTE_MARGIN, routeCost, routeFlows, simplifyRoute, translatedRouteIsClear } from './route-flows.js';
+import { acceptsRoute, compareCosts, cutsInterior, ROUTE_MARGIN, routeCost, routeFlows, simplifyRoute, translatedRouteIsClear } from './route-flows.js';
 import { collaboration, placePools, routeMessages } from './pool-layout.js';
 import { annotationLayout, isAnnotation, isFrame, obstructedFlows, placeAnnotations, routeAssociations } from './annotation-layout.js';
 
-const POOL_INSET = 20;
+const CONTAINER_INSET = 40;
 
 const byId = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 const right = (rect) => rect.x + rect.width;
@@ -23,6 +23,20 @@ function descendantOf(figure, parent) {
 
 function contains(outer, inner) {
   return inner.x >= outer.x && inner.y >= outer.y && right(inner) <= right(outer) && bottom(inner) <= bottom(outer);
+}
+
+// Coordinates are in the direction of the process, with the header on the left.
+function usableArea(container, frame, forNodes = true) {
+  const inset = forNodes && container.kind !== 'lane' ? CONTAINER_INSET : 0;
+  const trailing = forNodes ? Math.max(inset, ROUTE_MARGIN) : 0;
+  const header = container.header ?? 0;
+  return { x: frame.x + header + inset, y: frame.y + inset,
+    width: frame.width - header - inset - trailing, height: frame.height - inset - trailing };
+}
+
+function geometryWithLabels(figure, box) {
+  const delta = { x: box.x - figure.box.x, y: box.y - figure.box.y };
+  return [box, ...(figure.labels ?? []).map((label) => translate(label, delta))];
 }
 
 function containsCenter(rect, box) {
@@ -63,7 +77,7 @@ function attachments(diagram, figure) {
   return diagram.attachments.get(figure) ?? [];
 }
 
-function grow(state, diagram, figure, next) {
+function resize(state, diagram, figure, next) {
   const old = state.boxes.get(figure);
   state.boxes.set(figure, next);
 
@@ -73,9 +87,11 @@ function grow(state, diagram, figure, next) {
     const y = center(box, 'y');
     const distances = [Math.abs(x - old.x), Math.abs(y - old.y), Math.abs(x - right(old)), Math.abs(y - bottom(old))];
     const side = distances.indexOf(Math.min(...distances));
+    const cross = ROUTE_MARGIN;
+    const clamp = (value, start, end) => Math.max(start + cross, Math.min(value, end - cross)) - value;
     moveTree(state, diagram, attachment, {
-      x: side === 2 ? right(next) - right(old) : 0,
-      y: side === 3 ? bottom(next) - bottom(old) : 0
+      x: side === 2 ? right(next) - right(old) : side === 1 || side === 3 ? clamp(x, next.x, right(next)) : 0,
+      y: side === 3 ? bottom(next) - bottom(old) : side === 0 || side === 2 ? clamp(y, next.y, bottom(next)) : 0
     });
   }
 }
@@ -129,13 +145,13 @@ function fitLanes(state, diagram, scope, members, lanes, original, frame, toLoca
   const byLane = Map.groupBy(boxes, ([, lane]) => lane);
   const children = Map.groupBy(lanes, (lane) => lane.parent);
   const unitArea = (figure) => boundsOf([figure, ...attachments(diagram, figure)].map(bounds));
-  const inset = scope.kind === 'pool' ? POOL_INSET : 0;
-  const scopeLeft = frame ? frame.x + scope.header + inset : -Infinity;
-  const scopeRight = frame ? right(frame) - Math.max(ROUTE_MARGIN, inset) : Infinity;
-  const scopeTop = frame ? frame.y + inset : -Infinity;
-  const scopeBottom = frame ? bottom(frame) - Math.max(ROUTE_MARGIN, inset) : Infinity;
-  const leftEdge = (lane) => lane ? Math.max(scopeLeft, bounds(lane).x + lane.header) : scopeLeft;
-  const rightEdge = (lane) => lane ? Math.min(scopeRight, right(bounds(lane)) - ROUTE_MARGIN) : scopeRight;
+  const scopeArea = frame && usableArea(scope, frame);
+  const scopeLeft = scopeArea?.x ?? -Infinity;
+  const scopeRight = scopeArea ? right(scopeArea) : Infinity;
+  const scopeTop = scopeArea?.y ?? -Infinity;
+  const scopeBottom = scopeArea ? bottom(scopeArea) : Infinity;
+  const leftEdge = (lane) => lane ? Math.max(scopeLeft, usableArea(lane, bounds(lane)).x) : scopeLeft;
+  const rightEdge = (lane) => lane ? Math.min(scopeRight, right(usableArea(lane, bounds(lane)))) : scopeRight;
   let xGrowth = 0;
 
   // Fit lanes to a common longitudinal envelope so cross-lane columns stay aligned.
@@ -164,7 +180,7 @@ function fitLanes(state, diagram, scope, members, lanes, original, frame, toLoca
       if (content.length) {
         const area = boundsOf(content);
         const top = Math.max(rect.y, scopeTop - offset);
-        const end = Math.min(bottom(rect) - ROUTE_MARGIN, scopeBottom);
+        const end = bottom(usableArea(lane, rect));
         dy = Math.max(ceilGrid(top - area.y), Math.min(0, -ceilGrid(bottom(area) - end)));
         extra = Math.max(extra, ceilGrid(bottom(area) + dy - end));
       }
@@ -189,10 +205,116 @@ function fitLanes(state, diagram, scope, members, lanes, original, frame, toLoca
     }
     yGrowth = Math.max(yGrowth, ceilGrid(bottom(area) + dy - scopeBottom));
   }
+  if (frame && lanes.length) {
+    yGrowth = Math.max(yGrowth, ...nodes.map(([figure]) => ceilGrid(bottom(unitArea(figure)) - scopeBottom)));
+    for (const lane of lanes) {
+      const box = bounds(lane);
+      if (bottom(toLocal(original.boxes.get(lane))) === bottom(frame)) {
+        state.boxes.set(lane, toLocal({ ...box, height: bottom(frame) + yGrowth - box.y }));
+      }
+    }
+  }
   return { xGrowth, yGrowth };
 }
 
-function scopeCollisions(state, original, members, lanes, scope) {
+function fitSelectedFrame(state, diagram, scope, members, lanes, original, frame, local, world, flip) {
+  const scopeArea = usableArea(scope, frame);
+  const content = usableArea(scope, frame, false);
+  // Minimum dimensions from bpmn-js ResizeBehavior, in process coordinates.
+  const [minWidth, minHeight] = scope.kind === 'pool' ? [300, 150] : flip ? [120, 140] : [140, 120];
+  let rightEdge = frame.x + minWidth;
+  let bottomEdge = frame.y + minHeight;
+  const groups = Map.groupBy(members.filter((figure) => !figure.host), (figure) =>
+    diagram.followers.has(figure) ? null : memberLane(figure, lanes, original.boxes));
+  const children = Map.groupBy(lanes, (lane) => lane.parent);
+  const laneBoxes = new Map();
+  const units = (figure) => [figure, ...attachments(diagram, figure)];
+  const nodeArea = (figure) => boundsOf(units(figure).map((part) => local(state.boxes.get(part))));
+  const visibleArea = (figure) => boundsOf(units(figure).flatMap((part) =>
+    geometryWithLabels(part, state.boxes.get(part)).map(local)));
+  let dx = -Infinity;
+
+  function placeRows(parent, x, y) {
+    const lane = parent === scope ? null : parent;
+    const header = lane?.header ?? 0;
+    const members = groups.get(lane) ?? [];
+    const nodes = members.filter((figure) => figure.kind === 'node');
+    const left = x + header;
+    const top = Math.max(y, scopeArea.y);
+    const laneMargin = lane ? ROUTE_MARGIN : CONTAINER_INSET;
+    let end = lane ? y + 60 : bottomEdge;
+    if (nodes.length) {
+      const dy = ceilGrid(Math.max(...nodes.map((node) =>
+        Math.max(top - nodeArea(node).y, y - visibleArea(node).y))));
+      for (const node of nodes) {
+        moveTree(state, diagram, node, world({ x: dx, y: dy }));
+        const area = nodeArea(node);
+        const visible = visibleArea(node);
+        end = Math.max(end, bottom(area) + laneMargin, bottom(visible));
+        bottomEdge = Math.max(bottomEdge, bottom(area) + CONTAINER_INSET, bottom(visible));
+        rightEdge = Math.max(rightEdge, right(area) + CONTAINER_INSET, right(visible));
+      }
+    }
+    for (const figure of members.filter((member) => member.kind !== 'node')) {
+      const box = local(state.boxes.get(figure));
+      if (diagram.followers.has(figure)) {
+        const owner = diagram.notes.containers.get(figure).filter((container) => container.kind === 'lane').at(-1);
+        rightEdge = Math.max(rightEdge, laneLeft(owner) + box.width + ROUTE_MARGIN * 2);
+        continue;
+      }
+      if (lane) {
+        const dy = y - local(original.boxes.get(lane)).y;
+        moveTree(state, diagram, figure, world({ x: 0, y: dy }));
+      }
+      const area = visibleArea(figure);
+      end = Math.max(end, bottom(area));
+      rightEdge = Math.max(rightEdge, right(area));
+    }
+    const rows = (children.get(parent) ?? []).toSorted((a, b) =>
+      local(original.boxes.get(a)).y - local(original.boxes.get(b)).y || byId(a, b));
+    let next = lane && nodes.length ? end : y;
+    for (const row of rows) next = placeRows(row, left, next);
+    end = Math.max(end, next);
+    if (lane) {
+      rightEdge = Math.max(rightEdge, x + 300);
+      laneBoxes.set(lane, { x, y, width: 0, height: end - y });
+    }
+    return end;
+  }
+
+  function laneLeft(lane) {
+    let left = content.x;
+    for (let owner = lane; owner?.kind === 'lane' && owner.scope === scope; owner = owner.parent) {
+      left += owner.header;
+    }
+    return left;
+  }
+
+  for (const [lane, figures] of groups) {
+    const left = laneLeft(lane);
+    for (const node of figures.filter((figure) => figure.kind === 'node')) {
+      dx = Math.max(dx, ceilGrid(Math.max(Math.max(scopeArea.x, left) - nodeArea(node).x, left - visibleArea(node).x)));
+    }
+  }
+
+  bottomEdge = Math.max(placeRows(scope, content.x, frame.y), bottomEdge);
+  // The last lane at each level fills the rest of its parent.
+  const fill = (parent, end) => {
+    const rows = [...(children.get(parent) ?? [])].sort((a, b) => laneBoxes.get(a).y - laneBoxes.get(b).y);
+    for (const row of rows) {
+      const box = laneBoxes.get(row);
+      const height = row === rows.at(-1) ? end - box.y : box.height;
+      state.boxes.set(row, local({ ...box, width: rightEdge - box.x, height }));
+      fill(row, box.y + height);
+    }
+  };
+  fill(scope, bottomEdge);
+  return { xGrowth: rightEdge - right(frame), yGrowth: bottomEdge - bottom(frame) };
+}
+
+function scopeCollisions(state, original, members, lanes, scope, fitted) {
+  const frame = state.boxes.get(scope);
+  const local = scope.horizontal === false ? transpose : (box) => box;
   for (const figure of members) {
     const box = state.boxes.get(figure);
     if (!validBox(box)) return true;
@@ -204,10 +326,11 @@ function scopeCollisions(state, original, members, lanes, scope) {
         const originalBox = original.boxes.get(figure);
         const currentLane = state.boxes.get(other);
         const originalLane = original.boxes.get(other);
-        if (containsCenter(currentLane, box) !== containsCenter(originalLane, originalBox) ||
+        if (fitted ? intersects(box, currentLane) :
+            containsCenter(currentLane, box) !== containsCenter(originalLane, originalBox) ||
             intersects(box, currentLane) && !intersects(originalBox, originalLane)) return true;
       }
-      if (state.boxes.has(scope) && !contains(state.boxes.get(scope), box)) return true;
+      if (frame && !contains(usableArea(scope, local(frame)), local(box))) return true;
     }
   }
 
@@ -325,8 +448,7 @@ function improveSingleNodeBranches(best, { units, diagram, scope, frame, toLocal
     if (area.y < start || bottom(area) > end) continue;
     if ([scope, lane].some((container) => {
       if (!plan.boxes.has(container)) return false;
-      const inset = container.kind === 'pool' ? POOL_INSET : 0;
-      return !contains(fixedArea(local(plan, container), container.header, Math.max(inset, ROUTE_MARGIN), inset), area);
+      return !contains(usableArea(container, local(plan, container)), area);
     })) continue;
     if (units.some((unit) => unit.figure !== figure && unit.lane === lane &&
         !hasClearance(area, boundsOf(unit.parts.map((part) => local(plan, part))), spacing))) continue;
@@ -343,7 +465,7 @@ function improveSingleNodeBranches(best, { units, diagram, scope, frame, toLocal
   return best;
 }
 
-function planScope(diagram, state, scope, gaps) {
+function planScope(diagram, state, scope, gaps, fitSelection) {
   const figures = diagram.scopes.get(scope) ?? [];
   const members = figures.filter((figure) => figure.kind !== 'lane' && figure.kind !== 'group');
   const boxes = members.filter((figure) => figure.kind === 'node');
@@ -381,13 +503,15 @@ function planScope(diagram, state, scope, gaps) {
     if (!deltas) return null;
     const plan = clone(state);
     for (const [unit, delta] of deltas) moveTree(plan, diagram, unit.figure, toWorld(delta));
-    const { xGrowth, yGrowth } = fitLanes(plan, diagram, scope, members, lanes, state, frame, toLocal, toWorld);
+    const { xGrowth, yGrowth } = fitSelection
+      ? fitSelectedFrame(plan, diagram, scope, members, lanes, state, frame, toLocal, toWorld, flip)
+      : fitLanes(plan, diagram, scope, members, lanes, state, frame, toLocal, toWorld);
     if (scope.kind !== 'root' && (xGrowth || yGrowth)) {
       const bounds = toLocal({ ...frame, width: frame.width + xGrowth, height: frame.height + yGrowth });
       if (!validBox(bounds)) return null;
-      grow(plan, diagram, scope, bounds);
+      resize(plan, diagram, scope, bounds);
     }
-    if (scopeCollisions(plan, state, obstaclesInScope, lanes, scope)) return null;
+    if (scopeCollisions(plan, state, obstaclesInScope, lanes, scope, fitSelection)) return null;
     if ([...plan.boxes.values()].some((box) => !validBox(box))) return null;
     return { plan, deltas, growth: xGrowth + yGrowth };
   }
@@ -403,12 +527,9 @@ function planScope(diagram, state, scope, gaps) {
     const f = plan.boxes.get(scope);
     const drawing = f ?? boundsOf(lanes.length ? [...obstacles, ...lanes.map((lane) => plan.boxes.get(lane))] : obstacles);
     const pad = f ? 0 : ROUTE_MARGIN * 2;
-    const bounds = {
-      left: drawing.x - pad + (f && !flip ? scope.header : 0),
-      top: drawing.y - pad + (f && flip ? scope.header : 0),
-      right: right(drawing) + pad,
-      bottom: bottom(drawing) + pad
-    };
+    const content = f ? toLocal(usableArea(scope, toLocal(f), false)) : drawing;
+    const bounds = { left: content.x - pad, top: content.y - pad,
+      right: right(content) + pad, bottom: bottom(content) + pad };
     const flows = graph.map((flow) => ({
       ...flow,
       source: plan.boxes.get(flow.edge.source),
@@ -432,6 +553,35 @@ function planScope(diagram, state, scope, gaps) {
       return sum + Math.abs(after.x - before.x) + Math.abs(after.y - before.y);
     }, 0);
     return { ...candidate, cost: [...routeCost(routes.values()), movement] };
+  }
+
+  if (fitSelection) {
+    const candidates = [layoutProcess(units, graph, spacing),
+      layoutProcess(units, graph, minimums, { compact: true, reuseBranchRows: true })];
+    let best;
+    let reason = 'collisions';
+    for (const deltas of candidates) {
+      const candidate = prepare(deltas);
+      if (!candidate || !respectsGaps(units, candidate.plan, minimums, toLocal)) continue;
+      const evaluated = evaluate(candidate);
+      if (!evaluated) {
+        reason = 'routing';
+        continue;
+      }
+      const result = fitSelection(evaluated.plan);
+      if (!result.state) {
+        reason = result.reason;
+        continue;
+      }
+      const box = result.state.boxes.get(scope);
+      const movement = [...result.state.boxes].reduce((total, [figure, after]) => {
+        const before = state.boxes.get(figure);
+        return total + Math.abs(after.x - before.x) + Math.abs(after.y - before.y);
+      }, 0);
+      const cost = [...(result.cost ?? evaluated.cost).slice(0, 3), box.width * box.height, movement];
+      if (!best || compareCosts(cost, best.cost) < 0) best = { state: result.state, cost };
+    }
+    return best ?? { reason };
   }
 
   const regular = layoutProcess(units, graph, minimums);
@@ -656,11 +806,6 @@ export function alignmentSelection(diagram, elements) {
   return { scope: first.scope, members };
 }
 
-function fixedArea(frame, header, margin, inset = 0) {
-  return { x: frame.x + header + inset, y: frame.y + inset,
-    width: frame.width - header - inset - margin, height: frame.height - inset - margin };
-}
-
 function offsets(areas, axis, obstacles) {
   const end = axis === 'x' ? right : bottom;
   let low = -Infinity;
@@ -681,9 +826,16 @@ function offsets(areas, axis, obstacles) {
     .sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
 }
 
-function fixedRoutes(diagram, state, boxes, movable, finalAnnotations = false) {
-  const affected = diagram.edges.filter(({ source, target }) =>
-    boxes.has(source) || boxes.has(target) || movable?.has(source) || movable?.has(target));
+function fixedRoutes(diagram, state, boxes, movable, finalAnnotations = false, fitted = new Set()) {
+  const edgesToRoute = fitted.size
+    ? diagram.internalEdges.filter((edge) => !diagram.notes.associations.includes(edge) && edge.source.scope === edge.target.scope)
+    : diagram.edges;
+  const resizedFrames = [...boxes].filter(([figure]) => figure.expanded);
+  const affected = edgesToRoute.filter(({ source, target, points }) =>
+    boxes.has(source) || boxes.has(target) || movable?.has(source) || movable?.has(target) || fitted.has(source.scope) ||
+    points?.slice(1).some((point, index) => resizedFrames.some(([figure, box]) =>
+      figure.scope === source.scope &&
+      cutsInterior(points[index], point, box) && !cutsInterior(points[index], point, figure.box))));
   const result = new Map();
   for (const [scope, edges] of Map.groupBy(affected, ({ source }) => source.scope)) {
     const flip = scope.horizontal === false;
@@ -704,9 +856,9 @@ function fixedRoutes(diagram, state, boxes, movable, finalAnnotations = false) {
     }
     const drawing = frame ?? boundsOf(obstacles);
     const pad = frame ? 0 : ROUTE_MARGIN * 2;
-    const bounds = { left: drawing.x - pad + (frame && !flip ? scope.header : 0),
-      top: drawing.y - pad + (frame && flip ? scope.header : 0),
-      right: right(drawing) + pad, bottom: bottom(drawing) + pad };
+    const content = frame ? local(usableArea(scope, local(frame), false)) : drawing;
+    const bounds = { left: content.x - pad, top: content.y - pad,
+      right: right(content) + pad, bottom: bottom(content) + pad };
     const pending = [];
     const existing = new Map();
     for (const edge of edges) {
@@ -716,14 +868,15 @@ function fixedRoutes(diagram, state, boxes, movable, finalAnnotations = false) {
       const flow = { id: edge.id, source, target, isDefault: edge.isDefault, vertical: flip,
         back: center(target, axis) < center(source, axis) };
       const translated = state.routes.get(edge);
-      if (translated && translatedRouteIsClear(translated, flow, bounds, obstacles)) result.set(edge, translated);
+      const clear = fitted.size ? acceptsRoute : translatedRouteIsClear;
+      if (translated && clear(translated, flow, bounds, obstacles)) result.set(edge, translated);
       else {
         pending.push(flow);
-        if (movable && acceptsRoute(edge.points, flow, bounds, obstacles)) existing.set(edge.id, edge.points);
+        if ((movable || fitted.size) && acceptsRoute(edge.points, flow, bounds, obstacles)) existing.set(edge.id, edge.points);
       }
     }
     let routes = routeFlows(pending, bounds, obstacles);
-    if (movable && existing.size === pending.length &&
+    if ((movable || fitted.size) && existing.size === pending.length &&
         (!routes || compareCosts(routeCost(existing.values()), routeCost(routes.values())) <= 0)) routes = existing;
     if (!routes) return null;
     for (const edge of edges) {
@@ -740,7 +893,8 @@ function unitsOverlap(units, boxes) {
 
 export function planSelection(snapshot, selection, gaps) {
   const { figures, edges, messageFlows = [], auxiliary = [] } = snapshot;
-  const selected = selection.pools ?? new Set(selection.members);
+  const fitted = selection.container && selection.container.kind !== 'lane';
+  const selected = selection.pools ?? new Set(fitted ? [selection.container] : selection.members);
   const diagram = indexDiagram(figures, edges, auxiliary, (anchor) =>
     selected.has(anchor.host ?? anchor) || [...selected].some((figure) => descendantOf(anchor, figure)));
   const collab = collaboration(figures, messageFlows, diagram.followers);
@@ -753,6 +907,8 @@ export function planSelection(snapshot, selection, gaps) {
     const state = { boxes: placed.state.boxes, routes: new Map([...placed.state.routes, ...placed.routes]) };
     const finished = finishAnnotations(diagram, state, initial, messageFlows, gaps, selection);
     plan = finished ? changes(finished) : { reason: 'annotations' };
+  } else if (fitted) {
+    plan = planContainerSelection(snapshot, diagram, collab, initial, selection, gaps);
   } else {
     plan = planProcessSelection(snapshot, diagram, collab, initial, selection, gaps);
   }
@@ -760,6 +916,111 @@ export function planSelection(snapshot, selection, gaps) {
   const labelGateways = figures.filter((figure) => figure.type === 'bpmn:ExclusiveGateway' &&
     (selected.has(figure) || [...selected].some((member) => descendantOf(figure, member))));
   return { ...plan, labelGateways };
+}
+
+function planContainerSelection({ figures, messageFlows = [] }, diagram, collab, initial, selection, gaps) {
+  const { scope } = selection;
+  const fitted = new Set(figures.filter((figure) => (figure === scope || figure.expanded && descendantOf(figure, scope)) &&
+    (diagram.scopes.get(figure) ?? []).some((member) => member.kind === 'node')));
+  const owned = (figure) => fitted.has(figure) || figure.kind === 'lane' && fitted.has(figure.scope);
+
+  function safe(state) {
+    for (const frame of fitted) {
+      const local = frame.horizontal === false ? transpose : (box) => box;
+      const box = state.boxes.get(frame);
+      const area = usableArea(frame, local(box));
+      const content = usableArea(frame, local(box), false);
+      for (const member of diagram.scopes.get(frame)) {
+        if (member.kind === 'group') continue;
+        const bounds = state.boxes.get(member);
+        if ((member.kind === 'node' || member.host) && !contains(area, local(bounds))) return false;
+        if (!geometryWithLabels(member, bounds).every((rect) => contains(content, local(rect)))) return false;
+        for (let lane = member.lane ?? member.host?.lane; lane?.kind === 'lane'; lane = lane.parent) {
+          const laneArea = usableArea(lane, local(state.boxes.get(lane)), false);
+          if (!geometryWithLabels(member, bounds).every((rect) => contains(laneArea, local(rect)))) return false;
+        }
+      }
+    }
+
+    const parent = scope.scope;
+    const parts = [scope, ...attachments(diagram, scope)];
+    for (const frame of [parent, scope.lane]) {
+      if (!state.boxes.has(frame)) continue;
+      const local = parent.horizontal === false ? transpose : (box) => box;
+      const box = local(state.boxes.get(frame));
+      if (parts.some((part) => !contains(usableArea(frame, box), local(state.boxes.get(part))) ||
+          !geometryWithLabels(part, state.boxes.get(part)).every((rect) =>
+            contains(usableArea(frame, box, false), local(rect))))) return false;
+    }
+    return parts.every((part) => figures.every((other) => {
+      if (parts.includes(other) || descendantOf(other, scope) || other.scope !== parent ||
+          other.kind === 'group' || other === scope.lane || scope.lane && descendantOf(scope.lane, other)) return true;
+      return geometryWithLabels(part, state.boxes.get(part)).every((rect) =>
+        geometryWithLabels(other, state.boxes.get(other)).every((obstacle) => !intersects(rect, obstacle)));
+    }));
+  }
+
+  function finish(state, frame) {
+    // Route labels follow the command stack's waypoint adjustment. Preserve any
+    // extra space they need before checking external docking and annotations.
+    const local = frame.horizontal === false ? transpose : (box) => box;
+    const box = local(state.boxes.get(frame));
+    const labels = diagram.edges.filter(({ source }) => source.scope === frame).flatMap((edge) =>
+      (edge.projectLabels?.(state.routes.get(edge) ?? edge.points) ?? []).map(local));
+    const content = usableArea(frame, box, false);
+    if (labels.some((label) => label.x < content.x || label.y < content.y)) return { reason: 'routing' };
+    const width = Math.max(box.width, ...labels.map((label) => right(label) - box.x));
+    const height = Math.max(box.height, ...labels.map((label) => bottom(label) - box.y));
+    if (width !== box.width || height !== box.height) {
+      resize(state, diagram, frame, local({ ...box, width, height }));
+      for (const lane of diagram.scopes.get(frame).filter((member) => member.kind === 'lane')) {
+        const rect = local(state.boxes.get(lane));
+        state.boxes.set(lane, local({ ...rect, width: rect.width + width - box.width,
+          height: rect.height + (bottom(rect) === bottom(box) ? height - box.height : 0) }));
+      }
+    }
+    if (frame !== scope) return { state };
+
+    const routes = fixedRoutes(diagram, state, changes(state).boxes, undefined, false, fitted);
+    const messages = routeMessages(collab, state, initial, { selection: true });
+    if (!routes || !messages) return { reason: 'routing' };
+    state.routes = new Map([...state.routes, ...routes, ...messages]);
+    const finished = finishAnnotations(diagram, state, initial, messageFlows, gaps, { ...selection, owned });
+    if (!finished) return { reason: 'annotations' };
+    if (!safe(finished)) return { reason: 'collisions' };
+    const finalRoutes = fixedRoutes(diagram, finished, changes(finished).boxes, undefined, true, fitted);
+    const finalMessages = routeMessages(collaboration(figures, messageFlows), finished, initial, { selection: true });
+    if (!finalRoutes || !finalMessages) return { reason: 'routing' };
+    finished.routes = new Map([...finished.routes, ...finalRoutes, ...finalMessages]);
+    if (obstructedFlows(diagram.notes, finished, [...diagram.internalEdges.filter((edge) =>
+      !diagram.notes.associations.includes(edge)), ...messageFlows]).length) return { reason: 'annotations' };
+
+    for (const edge of diagram.internalEdges) {
+      if (edge.source.scope !== edge.target.scope || !fitted.has(edge.source.scope)) continue;
+      const frame = edge.source.scope;
+      const local = frame.horizontal === false ? transpose : (box) => box;
+      const area = usableArea(frame, local(finished.boxes.get(frame)), false);
+      const points = finished.routes.get(edge) ?? edge.points;
+      if (!points?.every((point) => contains(area, local({ ...point, width: 0, height: 0 }))) ||
+          edge.projectLabels?.(points).some((label) => !contains(area, local(label)))) return { reason: 'routing' };
+    }
+    const changed = changes(finished).boxes;
+    const changedRoutes = [...finished.routes].filter(([edge]) => fitted.has(edge.source.scope) ||
+      changed.has(edge.source) || changed.has(edge.target));
+    return { state: finished, cost: routeCost(changedRoutes.map(([, points]) => points)) };
+  }
+
+  function align(frame, state) {
+    for (const child of (diagram.scopes.get(frame) ?? []).filter((figure) => fitted.has(figure)).sort(byId)) {
+      const next = align(child, state);
+      if (!next.state) return next;
+      state = next.state;
+    }
+    return planScope(diagram, state, frame, gaps, (plan) => finish(plan, frame));
+  }
+
+  const result = align(scope, initial);
+  return result.state ? changes(result.state) : result;
 }
 
 function planProcessSelection({ figures, edges, messageFlows = [] }, diagram, collab, initial, selection, gaps) {
@@ -783,11 +1044,10 @@ function planProcessSelection({ figures, edges, messageFlows = [] }, diagram, co
     const lane = memberLane(figure, lanes, initial.boxes);
     const parts = [figure, ...attachments(diagram, figure)];
     const limits = [];
-    if (frame) {
-      const inset = scope.kind === 'pool' ? POOL_INSET : 0;
-      limits.push(fixedArea(frame, scope.header, Math.max(inset, ROUTE_MARGIN), inset));
+    if (frame) limits.push(usableArea(scope, frame));
+    for (let owner = lane; owner?.kind === 'lane'; owner = owner.parent) {
+      limits.push(usableArea(owner, local(owner.box)));
     }
-    if (lane) limits.push(fixedArea(local(lane.box), lane.header, ROUTE_MARGIN));
     return { figure, lane, parts, limits, shape: { ...relative(local(figure.box)), id: figure.id, type: figure.type },
       area: relative(boundsOf(parts.map(({ box }) => local(box)))) };
   });
@@ -907,7 +1167,7 @@ function planProcessSelection({ figures, edges, messageFlows = [] }, diagram, co
 
 function growAnnotationArea(diagram, state, { note, containers }, gaps, selection) {
   const frame = containers.at(-1);
-  if (!frame || (selection && frame !== selection.container && !selection.pools?.has(frame))) return false;
+  if (!frame || (selection && !selection.owned?.(frame) && !selection.pools?.has(frame))) return false;
   const cross = frame.horizontal === false ? 'x' : 'y';
   const span = cross === 'x' ? 'width' : 'height';
   const end = cross === 'x' ? right : bottom;
@@ -925,7 +1185,7 @@ function growAnnotationArea(diagram, state, { note, containers }, gaps, selectio
       for (const lane of siblings) {
         const box = state.boxes.get(lane);
         if (box[cross] < end(old) || box[cross] >= required) continue;
-        if (selection) return false;
+        if (selection && !selection.owned?.(lane)) return false;
         shiftLane(diagram, state, lane, { x: 0, y: 0, [cross]: ceilGrid(required - box[cross]) });
         required = end(state.boxes.get(lane));
       }
@@ -934,13 +1194,15 @@ function growAnnotationArea(diagram, state, { note, containers }, gaps, selectio
     const parent = container.kind === 'lane' ? (container.parent?.kind === 'lane' ? container.parent : container.scope)
       : container.expanded ? (container.lane ?? container.scope) : null;
     if (state.boxes.has(parent)) {
-      const margin = container.expanded ? ROUTE_MARGIN : 0;
+      const margin = container.expanded ? CONTAINER_INSET : 0;
       const extra = ceilGrid(required + margin - end(state.boxes.get(parent)));
-      if (extra > 0 && (selection || !extend(parent, extra))) return false;
+      if (extra > 0 && (selection && !selection.owned?.(parent) || !extend(parent, extra))) return false;
     }
 
-    grow(state, diagram, container, next);
-    if (!selection && container.expanded) makeRoom(state, diagram, container, old, gaps);
+    resize(state, diagram, container, next);
+    if ((!selection || selection.owned?.(container.scope)) && container.expanded) {
+      makeRoom(state, diagram, container, old, gaps);
+    }
     return true;
   }
 
@@ -965,6 +1227,11 @@ function finishAnnotations(diagram, planned, initial, messageFlows, gaps, select
   if (!notes.annotations.length && !notes.associations.length) return planned;
   const state = clone(planned);
   const explicit = new Set(selection?.members?.filter(isAnnotation));
+  for (const note of notes.annotations) {
+    if (diagram.followers.has(note) && notes.containers.get(note).some((frame) => selection?.owned?.(frame))) {
+      explicit.add(note);
+    }
+  }
   const flows = [...diagram.edges, ...messageFlows, ...diagram.internalEdges.filter((edge) =>
     !diagram.edges.includes(edge) && edge.type !== 'bpmn:Association')];
   const flexible = new Set();
@@ -989,7 +1256,8 @@ function finishAnnotations(diagram, planned, initial, messageFlows, gaps, select
         placed.routes = new Map([...placed.routes, ...routes, ...messages]);
         if (obstructedFlows(notes, placed, flows).length) return null;
       }
-      if (!routeAssociations(notes, placed) || [...placed.boxes.values()].some((box) => !validBox(box)) ||
+      if (!routeAssociations(notes, placed, new Set(notes.figures.filter((figure) => selection?.owned?.(figure)))) ||
+          [...placed.boxes.values()].some((box) => !validBox(box)) ||
           [...placed.routes.values()].some((path) => path.some(({ x, y }) =>
             ![x, y].every((value) => Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER)))) return null;
       return placed;

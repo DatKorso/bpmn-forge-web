@@ -62,7 +62,7 @@ export function reportAlignment({
   const warning = skipped.length ? `Предупреждение: пропущено участков — ${skipped.length}` : '';
   const summary = reason ? `Ошибка: ${reason}` :
     [warning, ...changes].filter(Boolean).join(' · ') || 'Изменений нет';
-  const counts = `Перемещено фигур: ${movedShapes}. Расширено контейнеров: ${resized}. Обновлено обычных связей: ${reroutedOrdinary}. ` +
+  const counts = `Перемещено фигур: ${movedShapes}. Контейнеров с изменённым размером: ${resized}. Обновлено обычных связей: ${reroutedOrdinary}. ` +
     `Перемещено пулов: ${movedPools}. Перестроено потоков сообщений: ${reroutedMessages}. ` +
     `Перемещено подписей: ${movedLabels}. Пропущено участков: ${skipped.length}.`;
   alignmentResult.textContent = reason ? summary : skipped.length ? `Предупреждение. ${counts}` : counts;

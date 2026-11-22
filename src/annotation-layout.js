@@ -142,7 +142,7 @@ export function obstructedFlows({ annotations }, state, flows) {
   });
 }
 
-export function routeAssociations(layout, state) {
+export function routeAssociations(layout, state, fitted = new Set()) {
   const { figures, associations, containers } = layout;
   for (const edge of associations) {
     const { source, target } = edge;
@@ -154,7 +154,8 @@ export function routeAssociations(layout, state) {
     const path = segments(points);
     const oldPath = segments(edge.points);
     const crosses = (segments, box) => segments.some(([a, b]) => cutsInterior(a, b, box));
-    let affected = changedBox(source.box, from) || changedBox(target.box, to);
+    const shared = [...fitted].filter((frame) => containers.get(source).includes(frame) && containers.get(target).includes(frame));
+    let affected = shared.length > 0 || changedBox(source.box, from) || changedBox(target.box, to);
     for (const figure of figures) {
       if (figure.kind === 'group') continue;
       const box = state.boxes.get(figure);
@@ -173,8 +174,10 @@ export function routeAssociations(layout, state) {
     }
     if (!affected) continue;
     const area = boundsOf(obstacles);
-    const bounds = { left: area.x - ROUTE_MARGIN * 2, top: area.y - ROUTE_MARGIN * 2,
-      right: right(area) + ROUTE_MARGIN * 2, bottom: bottom(area) + ROUTE_MARGIN * 2 };
+    const limit = shared.length ? intersection(shared.map((frame) => contentBox(frame, state.boxes.get(frame)))) : null;
+    const bounds = limit ? { left: limit.x, top: limit.y, right: right(limit), bottom: bottom(limit) } :
+      { left: area.x - ROUTE_MARGIN * 2, top: area.y - ROUTE_MARGIN * 2,
+        right: right(area) + ROUTE_MARGIN * 2, bottom: bottom(area) + ROUTE_MARGIN * 2 };
     const geometry = { source: from, target: to };
     const route = acceptsRoute(points, geometry, bounds, obstacles) ? points : routeFlow(geometry, bounds, obstacles);
     if (!route || !acceptsRoute(route, geometry, bounds, obstacles)) return false;

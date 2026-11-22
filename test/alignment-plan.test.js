@@ -201,16 +201,16 @@ test('aligns a vertical process across lanes and keeps its original lane assignm
 });
 
 for (const horizontal of [true, false]) {
-  test(`keeps 20 units around figures in a ${horizontal ? 'horizontal' : 'vertical'} pool`, () => {
+  test(`keeps 40 units around figures in a ${horizontal ? 'horizontal' : 'vertical'} pool`, () => {
     const d = diagram();
     const orient = ({ x, y, width, height }) => horizontal ? box(x, y, width, height) : box(y, x, height, width);
-    const pool = d.add('Pool', orient(box(50, 40, 170, 100)), { kind: 'pool', horizontal, header: 30 });
+    const pool = d.add('Pool', orient(box(50, 40, 210, 140)), { kind: 'pool', horizontal, header: 30 });
     const task = d.add('Task', orient(box(80, 40)), { scope: pool });
     const plan = planAlignment(d, gaps);
 
     assert.deepEqual(plan.skipped, []);
     assert.equal(plan.boxes.has(pool), false);
-    assert.deepEqual(finalBox(plan, task), orient(box(100, 60)));
+    assert.deepEqual(finalBox(plan, task), orient(box(120, 80)));
     apply(plan);
     assert.equal(planAlignment(d, gaps).boxes.size, 0);
   });
@@ -227,9 +227,9 @@ test('grows a tight pool and lane to keep padding around a task and its boundary
   assert.deepEqual(plan.skipped, []);
   const frame = finalBox(plan, pool);
   const area = boundsOf([finalBox(plan, task), finalBox(plan, event)]);
-  assert.ok(area.x >= 50 && area.y >= 20);
-  assert.ok(frame.width - (area.x + area.width) >= 20);
-  assert.ok(frame.height - (area.y + area.height) >= 20);
+  assert.ok(area.x >= 70 && area.y >= 40);
+  assert.ok(frame.width - (area.x + area.width) >= 40);
+  assert.ok(frame.height - (area.y + area.height) >= 40);
   assert.equal(finalBox(plan, lane).height, frame.height);
   assert.ok(frame.width > pool.box.width && frame.height > pool.box.height);
   apply(plan);
@@ -254,7 +254,7 @@ test('grows a nested subprocess and a lane, shifting a neighboring pool with its
   assert.ok(finalBox(plan, lane).width > lane.box.width);
   assert.ok(finalBox(plan, pool).width > pool.box.width);
   assert.equal(finalBox(plan, neighbor).x - neighbor.box.x, finalBox(plan, inside).x - inside.box.x);
-  assert.ok(finalBox(plan, neighbor).x > neighbor.box.x);
+  assert.notDeepEqual(delta(plan, neighbor), { x: 0, y: 0 });
   assert.ok(!intersects(finalBox(plan, neighbor), finalBox(plan, pool)));
   apply(plan);
   assert.equal(planAlignment(d, gaps).boxes.size, 0);
@@ -284,7 +284,7 @@ test('reuses a row for separate detours and keeps the compact layout on a second
   const spacing = { x: 60, y: 40 };
   const plan = planAlignment(d, spacing);
   assert.deepEqual(plan.skipped, []);
-  assert.equal(finalBox(plan, pool).height, 250);
+  assert.equal(finalBox(plan, pool).height, 280);
   assert.equal(finalBox(plan, bypass).y, finalBox(plan, upper).y);
   assert.equal(finalBox(plan, lower).y - finalBox(plan, upper).y, 120);
   for (const edge of main) assert.equal(plan.routes.get(edge).length, 2);
@@ -420,7 +420,7 @@ for (const horizontal of [true, false]) {
   });
 }
 
-test('moves a nested subprocess without flattening its internal geometry', () => {
+test('moves an individually selected subprocess without changing its internal geometry', () => {
   const d = diagram();
   const pool = d.add('pool', box(0, 0, 700, 420), { kind: 'pool', horizontal: true, header: 30 });
   const a = d.add('a', box(86, 130, 80, 50), { scope: pool });
@@ -432,7 +432,7 @@ test('moves a nested subprocess without flattening its internal geometry', () =>
   inside.points = [point(343, 159), point(412, 207)];
 
   assert.ok(alignmentSelection(d, [a.element, task.element]).reason);
-  const plan = planSelection(d, alignmentSelection(d, [pool.element]), gaps);
+  const plan = planSelection(d, { scope: pool, members: [a, sub] }, gaps);
   const moved = plan.boxes.get(sub);
   const delta = { x: moved.x - sub.box.x, y: moved.y - sub.box.y };
   assert.deepEqual(plan.boxes.get(start), translate(start.box, delta));
@@ -703,7 +703,7 @@ test('repairs a message between stationary pools when another pool moves across 
   assert.ok(points.slice(1).every((end, i) => !cutsInterior(points[i], end, moved)));
 });
 
-test('aligns the contents of one selected pool inside its existing frame', () => {
+test('fits one selected pool and reroutes messages while the other pool stays fixed', () => {
   const d = diagram();
   const a = d.add('A', box(0, 0, 620, 270), { kind: 'pool', horizontal: true, header: 30 });
   const b = d.add('B', box(100, 400, 430, 200), { kind: 'pool', horizontal: true, header: 30 });
@@ -715,7 +715,8 @@ test('aligns the contents of one selected pool inside its existing frame', () =>
   const plan = planSelection(d, alignmentSelection(d, [a.element]), gaps);
   assert.equal(plan.reason, undefined);
   assert.ok(plan.boxes.has(start) || plan.boxes.has(end));
-  assert.ok(!plan.boxes.has(a) && !plan.boxes.has(b) && !plan.boxes.has(outside));
+  assert.deepEqual(finalBox(plan, a), box(0, 0, 370, 150));
+  assert.ok(!plan.boxes.has(b) && !plan.boxes.has(outside));
   assert.equal(center(finalBox(plan, start), 'y'), center(finalBox(plan, end), 'y'));
   assert.ok(plan.routes.has(message));
 });
@@ -1017,4 +1018,126 @@ test('limits gateway label placement to the selected gateways and selected conta
   const poolPlan = planSelection(d, alignmentSelection(d, [pool.element]), gaps);
   assert.deepEqual(poolPlan.labelGateways, [selected, neighbor]);
   assert.ok(!poolPlan.boxes.has(outside));
+});
+
+function assertInsets(plan, frame, members) {
+  const rect = finalBox(plan, frame);
+  const area = boundsOf(members.map((member) => finalBox(plan, member)));
+  assert.ok(area.x - rect.x >= 40 + (frame.horizontal === false ? 0 : frame.header));
+  assert.ok(area.y - rect.y >= 40 + (frame.horizontal === false ? frame.header : 0));
+  assert.ok(rect.x + rect.width - area.x - area.width >= 40);
+  assert.ok(rect.y + rect.height - area.y - area.height >= 40);
+}
+
+function assertStableSelection(d, scope, plan) {
+  apply(plan);
+  const repeat = planSelection(d, alignmentSelection(d, [scope.element]), gaps);
+  assert.equal(repeat.reason, undefined);
+  assert.equal(repeat.boxes.size, 0);
+  for (const [edge, points] of repeat.routes) assert.deepEqual(points, edge.points);
+}
+
+for (const horizontal of [true, false]) {
+  test(`fits nested lanes in a selected ${horizontal ? 'horizontal' : 'vertical'} pool`, () => {
+    const d = diagram();
+    const orient = (x, y, w, h) => horizontal ? box(x, y, w, h) : box(y, x, h, w);
+    const pool = d.add('Pool', orient(10, 20, 950, 750), { kind: 'pool', horizontal, header: 30 });
+    const lane = d.add('First', orient(40, 20, 920, 500), { kind: 'lane', scope: pool, horizontal, header: 30 });
+    const inner = d.add('Inner', orient(70, 20, 890, 350),
+      { kind: 'lane', scope: pool, parent: lane, horizontal, header: 30 });
+    const empty = d.add('Empty', orient(70, 370, 890, 150),
+      { kind: 'lane', scope: pool, parent: lane, horizontal, header: 30 });
+    const last = d.add('Last', orient(40, 520, 920, 250), { kind: 'lane', scope: pool, horizontal, header: 30 });
+    const first = d.add('A', orient(148, 70, 100, 60), { scope: pool, lane: inner });
+    const second = d.add('B', orient(500, 557, 100, 60), { scope: pool, lane: last });
+    const event = d.add('Event', orient(548, 599, 36, 36), { kind: 'artifact', host: second, scope: pool });
+    const edge = d.connect(first, second);
+    const plan = planSelection(d, alignmentSelection(d, [pool.element]), gaps);
+    assert.equal(plan.reason, undefined);
+    assertInsets(plan, pool, [first, second, event]);
+    const local = ({ x, y, width, height }) => orient(x, y, width, height);
+    const [p, l, i, e, b] = [pool, lane, inner, empty, last].map((figure) => local(finalBox(plan, figure)));
+    assert.ok(p.width < 950 && p.height < 750);
+    assert.deepEqual([p.x, p.y], [10, 20]);
+    assert.equal(i.x, l.x + 30);
+    assert.equal(i.y + i.height, e.y);
+    assert.equal(e.y + e.height, l.y + l.height);
+    assert.equal(l.y + l.height, b.y);
+    assert.equal(b.y + b.height, p.y + p.height);
+    assert.equal(i.x + i.width, p.x + p.width);
+    assert.deepEqual([first.lane, second.lane], [inner, last]);
+    assertDocked(plan, edge);
+    assertStableSelection(d, pool, plan);
+  });
+}
+
+test('fits two subprocess levels, keeps labels and annotations inside, and preserves external docking', () => {
+  const d = diagram();
+  const outer = d.add('Outer', box(100, 120, 860, 430), { expanded: true });
+  const inner = d.add('Inner', box(200, 195, 175, 140), { scope: outer, expanded: true });
+  const a = d.add('A', box(220, 220, 100, 60), { scope: inner, labels: [box(219, 285, 100, 42)] });
+  const b = d.add('B', box(255, 247, 80, 60), { scope: inner });
+  const inside = d.connect(a, b);
+  inside.projectLabels = (points) => points?.map(({ x, y }) => box(x - 20, y - 15, 40, 12));
+  const { note, association } = annotate(d, 'Note', box(250, 300, 110, 80), b, { scope: inner });
+  const collapsed = d.add('Collapsed', box(570, 215, 100, 80), { scope: outer, type: 'bpmn:SubProcess' });
+  const event = d.add('Boundary', box(800, 532, 36, 36), { kind: 'artifact', host: outer });
+  const outside = d.add('Outside', box(1000, 700));
+  const external = d.connect(event, outside);
+  const fromFrame = d.connect(outer, outside);
+  d.connect(inner, collapsed);
+
+  const plan = planSelection(d, alignmentSelection(d, [outer.element]), gaps);
+  assert.equal(plan.reason, undefined);
+  const outerBox = finalBox(plan, outer);
+  const innerBox = finalBox(plan, inner);
+  assert.deepEqual([outerBox.x, outerBox.y], [100, 120]);
+  assert.ok(outerBox.width < outer.box.width);
+  assert.ok(innerBox.width > inner.box.width);
+  assertInsets(plan, outer, [inner, collapsed]);
+  assertInsets(plan, inner, [a, b]);
+  assert.equal(finalBox(plan, event).y + 18, outerBox.y + outerBox.height);
+  assert.equal(finalBox(plan, collapsed).width, collapsed.box.width);
+  assert.deepEqual(boundsOf([innerBox, finalBox(plan, note), translate(a.labels[0], delta(plan, a))]), innerBox);
+  for (const edge of [inside, association, external, fromFrame]) assertDocked(plan, edge);
+  assert.ok(!plan.boxes.has(outside));
+  a.labels = a.labels.map((label) => translate(label, delta(plan, a)));
+  assertStableSelection(d, outer, plan);
+});
+
+test('grows a tight selected pool while leaving empty containers at their original size', () => {
+  const d = diagram();
+  const pool = d.add('Pool', box(0, 0, 180, 105), { kind: 'pool', header: 30 });
+  const empty = d.add('Empty', box(61, 15, 165, 125), { scope: pool, expanded: true });
+  const end = d.add('End', box(96, 35), { scope: pool });
+  d.connect(empty, end);
+  const plan = planSelection(d, alignmentSelection(d, [pool.element]), gaps);
+  assert.equal(plan.reason, undefined);
+  assertInsets(plan, pool, [empty, end]);
+  assert.ok(finalBox(plan, pool).width > pool.box.width);
+  assert.equal(finalBox(plan, empty).width, empty.box.width);
+  assert.equal(finalBox(plan, empty).height, empty.box.height);
+  assertStableSelection(d, pool, plan);
+});
+
+test('refuses to grow a selected subprocess through its parent or a stationary sibling', () => {
+  const d = diagram();
+  const pool = d.add('Pool', box(0, 0, 300, 240), { kind: 'pool', header: 30 });
+  const sub = d.add('Sub', box(70, 40, 140, 120), { scope: pool, expanded: true });
+  const a = d.add('A', box(82, 48), { scope: sub });
+  const b = d.add('B', box(90, 55), { scope: sub });
+  d.connect(a, b);
+  const selection = alignmentSelection(d, [sub.element]);
+  const before = d.figures.map((figure) => figure.box);
+  assert.deepEqual(planSelection(d, selection, gaps), { reason: 'collisions' });
+  assert.deepEqual(d.figures.map((figure) => figure.box), before);
+  pool.box = box(0, 0, 900, 400);
+  const sibling = d.add('Sibling', box(235, 75), { scope: pool });
+  assert.deepEqual(planSelection(d, selection, gaps), { reason: 'collisions' });
+  sibling.box = box(650, 75);
+  const plan = planSelection(d, selection, gaps);
+  assert.equal(plan.reason, undefined);
+  assert.ok(finalBox(plan, sub).width > sub.box.width);
+  assert.ok(!plan.boxes.has(pool) && !plan.boxes.has(sibling));
+  assertStableSelection(d, sub, plan);
 });

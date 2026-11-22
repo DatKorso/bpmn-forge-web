@@ -254,7 +254,9 @@ class AutoAlign {
     for (const [{ element, box }, next] of plan.boxes) {
       bounds.set(element, next);
       const delta = { x: next.x - box.x, y: next.y - box.y };
-      for (const label of element.labels) bounds.set(label, translate(label, delta));
+      if (delta.x || delta.y) {
+        for (const label of element.labels) bounds.set(label, translate(label, delta));
+      }
       for (const connection of [...element.incoming, ...element.outgoing]) {
         if (!connection.hidden && !is(connection, 'bpmn:SequenceFlow') && !is(connection, 'bpmn:MessageFlow')) {
           connections.add(connection);
@@ -275,7 +277,9 @@ class AutoAlign {
       const nextSource = projected(source);
       const nextTarget = projected(target);
       const delta = { x: nextSource.x - source.x, y: nextSource.y - source.y };
-      const rigid = delta.x === nextTarget.x - target.x && delta.y === nextTarget.y - target.y;
+      const rigid = delta.x === nextTarget.x - target.x && delta.y === nextTarget.y - target.y &&
+        nextSource.width === source.width && nextSource.height === source.height &&
+        nextTarget.width === target.width && nextTarget.height === target.height;
       const points = rigid ? translateWaypoints(waypoints, delta) : this.connectionDocking.getCroppedWaypoints({
         ...connection,
         businessObject: connection.businessObject,
@@ -289,7 +293,9 @@ class AutoAlign {
 
     const movedLabels = this.apply(bounds, routes, [], [{ diagram: selection.diagram, gateways: plan.labelGateways }]);
     return {
-      moved: plan.boxes.size, rerouted: routes.size, movedLabels,
+      moved: [...plan.boxes].filter(([{ box }, next]) => box.x !== next.x || box.y !== next.y).length,
+      resized: [...plan.boxes].filter(([{ box }, next]) => box.width !== next.width || box.height !== next.height).length,
+      rerouted: routes.size, movedLabels,
       movedPools: [...plan.boxes].filter(([{ kind, box }, next]) =>
         kind === 'pool' && (box.x !== next.x || box.y !== next.y)).length,
       reroutedMessages: [...routes.keys()].filter((connection) => is(connection, 'bpmn:MessageFlow')).length
