@@ -5,7 +5,7 @@ const REACH = 40;
 const right = (box) => box.x + box.width;
 const bottom = (box) => box.y + box.height;
 
-export function placeGatewayLabel(label, gateway, obstacles, paths, containers) {
+export function placeGatewayLabel(label, gateway, obstacles, paths, containers, strict = false) {
   const { width, height } = label;
   const searchArea = {
     x: gateway.x - REACH - width - ROUTE_MARGIN,
@@ -15,7 +15,8 @@ export function placeGatewayLabel(label, gateway, obstacles, paths, containers) 
   };
   const boxes = [gateway, ...obstacles.filter((box) => intersects(box, label) || intersects(box, searchArea))];
   const diagonals = [];
-  let blocked = boxes.some((box) => intersects(label, box));
+  let blocked = boxes.some((box) => intersects(label, box)) || (strict &&
+    containers.some((box) => label.x < box.x || label.y < box.y || right(label) > right(box) || bottom(label) > bottom(box)));
   for (const points of paths) {
     for (let index = 1; index < points.length; index++) {
       const a = points[index - 1];
@@ -43,7 +44,7 @@ export function placeGatewayLabel(label, gateway, obstacles, paths, containers) 
     { x: right(gateway), y: gateway.y - height, width: REACH + width, height: along },
     { x: gateway.x - REACH - width, y: gateway.y - height, width: REACH + width, height: along }
   ];
-  let best = label;
+  let best = strict ? null : label;
   let cost = Infinity;
   for (const side of new Set([preferredSide, 0, 1, 2, 3])) {
     const limits = strips[side];

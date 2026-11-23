@@ -49,6 +49,7 @@ let highlighted = [];
 let filename = 'Новая схема.bpmn';
 let savedAction;
 let dirty = false;
+let alignmentRevision = 0;
 
 function warnBeforeUnload(event) {
   event.preventDefault();
@@ -76,7 +77,8 @@ function updateControls() {
 
   for (const id of ['new', 'open']) byId(id).disabled = busy;
   byId('download').disabled = busy || !modeler;
-  align.disabled = alignGraph.disabled = busy || empty;
+  align.disabled = busy || empty;
+  alignGraph.disabled = busy || !root || (empty && !root.businessObject.participants?.length);
   byId('undo').disabled = busy || !stack?.canUndo();
   byId('redo').disabled = busy || !stack?.canRedo();
   const reason = aligning ? 'Дождитесь завершения выравнивания.' : busy || !modeler
@@ -137,6 +139,9 @@ async function loadDiagram(readXML, nextFilename, message, operation = 'new') {
       updateDirtyState();
       clearAlignmentStatus();
       clearSkippedHighlight();
+    });
+    next.on(['commandStack.changed', 'root.set'], () => {
+      if (modeler === next) alignmentRevision++;
     });
     next.on(['commandStack.changed', 'root.set', 'selection.changed'], () => {
       if (modeler === next) updateControls();
@@ -396,6 +401,11 @@ async function alignDiagram(button, trigger) {
   modeler.get('directEditing').complete();
   const current = modeler;
   const action = currentAction();
+  const root = current.get('canvas').getRootElement();
+  const revision = alignmentRevision;
+  const stale = () => current !== modeler || action !== currentAction() ||
+    (graph && (revision !== alignmentRevision || root !== current.get('canvas').getRootElement()));
+  const staleResult = { reason: 'Схема изменилась. Запустите выравнивание ещё раз.' };
   busy = aligning = true;
   setAlignmentPending(true);
   updateControls();
@@ -404,13 +414,17 @@ async function alignDiagram(button, trigger) {
   try {
     // Let Chromium paint the pending state before synchronous planning.
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (stale()) {
+      reportAlignment(staleResult);
+      return;
+    }
     const autoAlign = current.get('autoAlign');
-    const planning = graph ? autoAlign.planGraphDiagram({ x: gaps.x, y: gaps.y }) :
+    const planning = graph ? autoAlign.planGraphDiagram({ x: gaps.x, y: gaps.y }, stale) :
       selected ? autoAlign.planSelection(selection, gaps) : autoAlign.planDiagram(gaps);
     const plan = await planning;
     setAlignmentPending(false);
-    if (current !== modeler || action !== currentAction()) {
-      reportAlignment({ reason: 'Схема изменилась. Запустите выравнивание ещё раз.' });
+    if (stale()) {
+      reportAlignment(staleResult);
       return;
     }
     if (plan.apply) {
@@ -418,15 +432,18 @@ async function alignDiagram(button, trigger) {
       previewOpened = true;
       if (!await confirmed) return;
     }
-    if (current !== modeler || action !== currentAction()) {
-      reportAlignment({ reason: 'Схема изменилась. Запустите выравнивание ещё раз.' });
+    if (stale()) {
+      reportAlignment(staleResult);
       return;
     }
     clearSkippedHighlight();
     reportAlignment(plan.apply ? plan.apply() : plan, revealSkippedRegion);
   } catch (error) {
-    reportAlignment({ reason: selected ? 'Не удалось выровнять выделение.' : 'Не удалось выполнить автовыравнивание.' });
-    console.error(error);
+    if (stale()) reportAlignment(staleResult);
+    else {
+      reportAlignment({ reason: selected ? 'Не удалось выровнять выделение.' : 'Не удалось выполнить автовыравнивание.' });
+      console.error(error);
+    }
   } finally {
     busy = aligning = false;
     setAlignmentPending(false);

@@ -99,14 +99,27 @@ export function packRows(units, lanes, geometry, header, spacing, expanded, vert
   return { positioned, laneBoxes, frame: { x: 0, y: 0, width, height: cursor } };
 }
 
+export function captureStructure(scope) {
+  const { nodes, edges, lanes } = modelOrder(scope);
+  return {
+    nodes, edges, lanes,
+    laneMembers: new Map(lanes.map((lane) => [lane, [...(lane.flowNodeRef ?? [])]])),
+    defaults: new Set(edges.filter((edge) => edge.sourceRef?.default === edge)),
+    downstreamEvents: new Set(edges
+      .filter(({ sourceRef, targetRef }) => sourceRef?.attachedToRef &&
+        sourceRef.attachedToRef !== (targetRef?.attachedToRef ?? targetRef))
+      .map(({ sourceRef }) => sourceRef))
+  };
+}
+
 export async function arrangeScope(scope, diagram, state, gaps, diagnostics, vertical = scope.horizontal === false) {
-  const { nodes, edges, lanes: modelLanes } = modelOrder(scope);
+  const { nodes, edges, lanes: modelLanes, laneMembers, defaults, downstreamEvents } = diagram.structures.get(scope);
   const figures = diagram.scopes.get(scope) ?? [];
   const byModel = new Map(figures.map((figure) => [modelOf(figure), figure]));
   const lanes = modelLanes.map((model) => byModel.get(model));
   const memberLanes = new Map();
   for (const model of modelLanes) {
-    for (const member of model.flowNodeRef ?? []) {
+    for (const member of laneMembers.get(model)) {
       if (!memberLanes.has(member)) memberLanes.set(member, byModel.get(model));
     }
   }
@@ -126,10 +139,6 @@ export async function arrangeScope(scope, diagram, state, gaps, diagnostics, ver
   const contacts = dataContacts(diagram.data, scope, rank);
   const dataOwners = Map.groupBy(contacts, ([, sink]) => sink);
   const attached = Map.groupBy(members.filter(({ host }) => host), ({ host }) => host);
-  const downstreamEvents = new Set(edges
-    .filter(({ sourceRef, targetRef }) => sourceRef?.attachedToRef &&
-      sourceRef.attachedToRef !== (targetRef?.attachedToRef ?? targetRef))
-    .map(({ sourceRef }) => sourceRef));
   for (const [index, figure] of members.entries()) {
     if (figure.host) continue;
     const [owner] = dataOwners.get(figure)?.[0] ?? [];
@@ -141,7 +150,7 @@ export async function arrangeScope(scope, diagram, state, gaps, diagnostics, ver
   const flows = edges.map((model, index) => {
     const edge = scopeEdges.get(model);
     return edge && { id: keyAt(index), edge, source: edge.source.host ?? edge.source, target: edge.target.host ?? edge.target,
-      isDefault: model.sourceRef?.default === model };
+      isDefault: defaults.has(model) };
   });
   const missing = nodes.some((model) =>
     (typeIs(model, 'bpmn:FlowNode') || typeIs(model, 'bpmn:DataObjectReference') ||

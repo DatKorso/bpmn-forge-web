@@ -219,7 +219,7 @@ export function translatedRouteIsClear(points, { source, target }, bounds, obsta
     segments(points).every(([a, b]) => !others.some((rect) => cutsInterior(a, b, rect)));
 }
 
-function getPorts(rect, bounds, blocked, projection, margin, directionCount) {
+function getPorts(rect, bounds, blocked, projection, margin, directionCount, extra = {}) {
   const x = rect.x + rect.width / 2;
   const y = rect.y + rect.height / 2;
   const ports = [
@@ -236,8 +236,20 @@ function getPorts(rect, bounds, blocked, projection, margin, directionCount) {
     ports.unshift([{ x: right(rect), y: py }, 1, 0], [{ x: px, y: bottom(rect) }, 0, 1],
       [{ x: rect.x, y: py }, -1, 0], [{ x: px, y: rect.y }, 0, -1]);
   }
+  for (const { x: px, y: py } of extra.projections ?? []) {
+    if (py !== y && py >= rect.y + extra.inset && py <= bottom(rect) - extra.inset) {
+      ports.push([{ x: right(rect), y: py }, 1, 0], [{ x: rect.x, y: py }, -1, 0]);
+    }
+    if (px !== x && px >= rect.x + extra.inset && px <= right(rect) - extra.inset) {
+      ports.push([{ x: px, y: bottom(rect) }, 0, 1], [{ x: px, y: rect.y }, 0, -1]);
+    }
+  }
   return ports.flatMap(([anchor, dx, dy]) => {
     if (!inside(anchor, bounds)) return [];
+    if (extra.inward) {
+      dx = -dx;
+      dy = -dy;
+    }
     for (const distance of [margin, 1]) {
       const exit = { x: anchor.x + dx * distance, y: anchor.y + dy * distance };
       if (inside(exit, bounds) && !blocked(anchor, exit)) {
@@ -300,19 +312,19 @@ function addCost(a, b) {
   return a.map((value, index) => value + b[index]);
 }
 
-export function routeFlow(flow, bounds, obstacles, occupied = []) {
-  return findRoute(flow, bounds, obstacles, occupiedIndex(occupied).cost, obstacleIndex(obstacles));
+export function routeFlow(flow, bounds, obstacles, occupied = [], options) {
+  return findRoute(flow, bounds, obstacles, occupiedIndex(occupied).cost, obstacleIndex(obstacles), options);
 }
 
 function findRoute(flow, bounds, obstacles, occupiedCost, blocked, {
   margin = ROUTE_MARGIN, preventReversals = false
 } = {}) {
-  const { passage, frames = [], startPhase = 0, sourceProjection, targetProjection } = flow;
+  const { passage, frames = [], startPhase = 0, phaseCount = 3, sourceProjection, targetProjection, sourcePorts, targetPorts } = flow;
   const advance = passage ?? ((phase) => phase);
   const { source, target } = flow;
   const directionCount = preventReversals ? 4 : 2;
-  const starts = getPorts(source, bounds, blocked, sourceProjection, margin, directionCount);
-  const ends = getPorts(target, bounds, blocked, targetProjection, margin, directionCount);
+  const starts = getPorts(source, bounds, blocked, sourceProjection, margin, directionCount, sourcePorts);
+  const ends = getPorts(target, bounds, blocked, targetProjection, margin, directionCount, targetPorts);
   if (!starts.length || !ends.length) return null;
 
   const progressAxis = flow.vertical ? 'y' : 'x';
@@ -384,7 +396,7 @@ function findRoute(flow, bounds, obstacles, occupiedCost, blocked, {
 
   function enqueue(state) {
     if (state.phase < 0) return;
-    const id = (((key(state.i, state.j) * 3 + state.phase) * directionCount + state.direction) *
+    const id = (((key(state.i, state.j) * phaseCount + state.phase) * directionCount + state.direction) *
       (isLoop ? starts.length : 1)) +
       (isLoop ? state.start : 0);
     if (best.has(id) && compareCosts(best.get(id), state.cost) <= 0) return;

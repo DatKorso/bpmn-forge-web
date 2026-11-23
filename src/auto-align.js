@@ -6,6 +6,7 @@ import {
 import { alignmentSelection } from './alignment-selection.js';
 import { isFrame } from './annotation-layout.js';
 import { placeGatewayLabel } from './gateway-label-layout.js';
+import { sameBox } from './alignment-state.js';
 import { translate, translateWaypoints } from './layout.js';
 
 const COMMAND = 'editor.autoAlign';
@@ -16,11 +17,20 @@ const SKIP_REASONS = {
   poolStability: 'расстановка пулов пропущена: не достигнуто устойчивое положение',
   poolRouting: 'расстановка пулов пропущена: не удалось разместить пулы и провести потоки сообщений',
   routing: 'не удалось провести все стрелки в обход фигур',
-  graphCollaboration: 'Экспериментальная раскладка пока не поддерживает несколько участников и потоки сообщений',
+  graphMixedOrientation: 'Пулы на активной плоскости имеют разную ориентацию',
+  graphNoPools: 'На активной плоскости не отображается ни одна рамка участника',
   graphGroup: 'Экспериментальная раскладка пока не поддерживает группы',
   graphNestedLanes: 'Экспериментальная раскладка пока не поддерживает вложенные дорожки',
   graphMissingLane: 'В пуле с дорожками каждый узел должен принадлежать дорожке',
-  graphIncomplete: 'Экспериментальная раскладка не смогла сопоставить все элементы модели и схемы'
+  graphIncomplete: 'Геометрия активной плоскости не соответствует элементам BPMN',
+  graphOwnership: 'Принадлежность фигуры пулу, подпроцессу или дорожке неоднозначна',
+  graphMessageEndpoint: 'Конец потока сообщений не поддерживается или не принадлежит другому пулу',
+  graphDataScope: 'Связь данных выходит за пределы поддерживаемой области',
+  graphAssociationEndpoint: 'Ассоциация должна соединять две видимые фигуры',
+  graphMessageRouting: 'Не удалось проложить поток сообщений',
+  graphAssociationRouting: 'Не удалось проложить ассоциацию',
+  graphConnectionLabel: 'Не удалось разместить подпись связи без наложений',
+  graphGatewayLabel: 'Не удалось разместить подпись шлюза без наложений'
 };
 
 const SKIP_HINTS = {
@@ -30,7 +40,8 @@ const SKIP_HINTS = {
   poolStability: 'Разнесите перекрывающиеся пулы и повторите выравнивание.',
   poolRouting: 'Освободите место между пулами для потоков сообщений.',
   routing: 'Освободите проход между фигурами или увеличьте отступы.',
-  graphCollaboration: 'Для этой схемы доступна кнопка «Выровнять схему».',
+  graphMixedOrientation: 'Используйте «Выровнять схему» или приведите пулы к одной ориентации.',
+  graphNoPools: 'Проверьте BPMN DI участников.',
   graphGroup: 'Для этой схемы доступна кнопка «Выровнять схему».',
   graphNestedLanes: 'Для этой схемы доступна кнопка «Выровнять схему».',
   graphMissingLane: 'Проверьте принадлежность фигур дорожкам.',
@@ -43,7 +54,8 @@ function getBounds({ x, y, width, height }) {
 
 function regionName({ element, kind }) {
   const { name, id } = element.businessObject;
-  const type = kind === 'pool' ? 'Пул' : kind === 'root' ? 'Процесс' : 'Подпроцесс';
+  const type = kind === 'pool' ? 'Пул' : is(element, 'bpmn:Collaboration') ? 'Коллаборация' :
+    is(element, 'bpmn:SubProcess') ? 'Подпроцесс' : 'Процесс';
   return `${type} «${name?.trim() || id}»`;
 }
 
@@ -55,13 +67,14 @@ function figureKind(shape) {
   return 'artifact';
 }
 
-function snapshot(root, shapes, elementRegistry) {
+function snapshot(root, shapes, elementRegistry, graph = false) {
   const orientation = (element) => isHorizontal(element) ?? isDirectionHorizontal(element, elementRegistry);
-  const diagramRoot = { id: root.id, element: root, kind: 'root', header: 0 };
+  const diagramRoot = { id: root.id, element: root, model: root.businessObject, kind: 'root', header: 0 };
   const byElement = new Map(shapes.map((element) => [element, {
     id: element.id,
     type: element.type,
     element,
+    model: element.businessObject,
     kind: figureKind(element),
     box: getBounds(element),
     labels: element.labels.filter((label) => !label.hidden).map(getBounds),
@@ -105,17 +118,18 @@ function snapshot(root, shapes, elementRegistry) {
       if (!target || connection.hidden) continue;
       const group = is(connection, 'bpmn:SequenceFlow') ? edges :
         is(connection, 'bpmn:MessageFlow') ? messageFlows : auxiliary;
+      const points = graph ? translateWaypoints(connection.waypoints, { x: 0, y: 0 }) : connection.waypoints;
+      const labels = connection.labels.filter((label) => !label.hidden).map(getBounds);
       group.push({
-        id: connection.id, type: connection.type, connection, source, target, points: connection.waypoints,
+        id: connection.id, type: connection.type, connection, model: connection.businessObject, source, target, points, labels,
         isDefault: element.businessObject.default === connection.businessObject,
-        projectLabels: (points) => connection.labels.filter((label) => !label.hidden).map((label) =>
-          points && !sameWaypoints(connection.waypoints, points)
-            ? translate(label, getLabelAdjustment(label, points, connection.waypoints, {}))
-            : getBounds(label))
+        projectLabels: (next) => labels.map((label) =>
+          next && !sameWaypoints(points, next) ? translate(label, getLabelAdjustment(label, next, points, {})) : label)
       });
     }
   }
-  return { root: diagramRoot, figures: [...byElement.values()], edges, messageFlows, auxiliary };
+  return { root: diagramRoot, figures: [...byElement.values()], edges, messageFlows, auxiliary,
+    diElements: graph ? [...(getDi(root)?.planeElement ?? [])] : undefined };
 }
 
 function sameWaypoints(a, b) {
@@ -188,11 +202,11 @@ class AlignCommand {
   }
 
   execute(context) {
-    const { bounds, routes, relayout } = context;
+    const { bounds, routes, relayout, explicitLabels } = context;
     context.previous = new Map([...bounds.keys()].map((element) => [element, getBounds(element)]));
     const labelOwners = new Set([
       ...[...bounds.keys()].map((element) => element.labelTarget).filter(Boolean),
-      ...routes.keys(), ...relayout
+      ...routes.keys(), ...relayout, ...[...(explicitLabels?.keys() ?? [])].map((label) => label.labelTarget)
     ]);
     context.previousLabels = [...labelOwners].map((element) => {
       const di = getDi(element);
@@ -216,7 +230,7 @@ class AlignCommand {
 
   // Nested commands belong in postExecute so the command stack groups their undo and redo.
   postExecute(context) {
-    const { bounds, routes, relayout, labelGroups } = context;
+    const { bounds, routes, relayout, labelGroups, explicitLabels, explicitOwners } = context;
     for (const connection of relayout) {
       this.modeling.layoutConnection(connection, {
         waypoints: [],
@@ -225,12 +239,18 @@ class AlignCommand {
       });
     }
     for (const [connection, waypoints] of routes) {
-      this.modeling.updateWaypoints(connection, waypoints, { createElementsBehavior: false });
+      this.modeling.updateWaypoints(connection, waypoints, {
+        createElementsBehavior: false,
+        labelBehavior: !explicitOwners?.has(connection)
+      });
     }
     if (labelGroups?.length) {
       const labels = gatewayLabelBounds(labelGroups);
       context.movedLabels = labels.size;
       if (labels.size) this.commandStack.execute(COMMAND, { bounds: labels, routes: new Map(), relayout: [] });
+    }
+    if (explicitLabels?.size) {
+      this.commandStack.execute(COMMAND, { bounds: explicitLabels, routes: new Map(), relayout: [] });
     }
   }
 }
@@ -267,12 +287,12 @@ class AutoAlign {
     return { diagram, ...alignmentSelection(diagram, elements) };
   }
 
-  prepareCommand(bounds, routes, relayout, labelGroups, result) {
+  prepareCommand(bounds, routes, relayout, labelGroups, result, explicitLabels, explicitOwners) {
     const hasGeometry = bounds.size || routes.size || relayout.length;
     const labels = hasGeometry ? null : gatewayLabelBounds(labelGroups);
-    const context = { bounds: labels ?? bounds, routes, relayout,
-      labelGroups: hasGeometry ? labelGroups : [], movedLabels: labels?.size ?? 0 };
-    if (!hasGeometry && !labels.size) return result;
+    const context = { bounds: labels ?? bounds, routes, relayout, explicitLabels, explicitOwners,
+      labelGroups: hasGeometry ? labelGroups : [], movedLabels: (labels?.size ?? 0) + (explicitLabels?.size ?? 0) };
+    if (!hasGeometry && !labels.size && !explicitLabels?.size) return result;
     return {
       ...result,
       movedLabels: context.movedLabels,
@@ -357,19 +377,24 @@ class AutoAlign {
     return this.prepareDiagramPlans(plans());
   }
 
-  async planGraphDiagram(gaps) {
-    const diagrams = this.diagramSnapshots();
+  async planGraphDiagram(gaps, stale) {
+    const start = performance.now();
+    const root = this.canvas.getRootElement();
+    const diagram = snapshot(root, this.shapesByRoot(root).get(root) ?? [], this.elementRegistry, true);
+    const end = performance.now();
+    for (const stage of ['snapshot', 'local', 'pools', 'notes', 'routes']) performance.clearMeasures(`bpmn:graph:${stage}`);
+    performance.measure('bpmn:graph:snapshot', { start, end });
     const { planGraphLayout } = await import('./graph-layout/index.js');
-    const plans = [];
-    for (const diagram of diagrams) {
-      const plan = await planGraphLayout(diagram, gaps);
-      if (plan.reason) {
-        const scope = plan.scope ?? diagram.root;
-        return { reason: `${regionName(scope)} — ${SKIP_REASONS[plan.reason]}. ${SKIP_HINTS[plan.reason]}` };
-      }
-      plans.push({ diagram, plan });
+    if (stale?.()) return {};
+    const plan = await planGraphLayout(diagram, gaps);
+    if (stale?.()) return {};
+    if (plan.reason) {
+      const scope = plan.scope ?? diagram.root;
+      const subject = plan.elementId ? ` (${plan.elementId})` : '';
+      const hint = SKIP_HINTS[plan.reason] ?? '';
+      return { reason: `${regionName(scope)}${subject} — ${SKIP_REASONS[plan.reason] ?? SKIP_REASONS.routing}. ${hint}`.trim() };
     }
-    return this.prepareDiagramPlans(plans, true);
+    return this.prepareDiagramPlans([{ diagram, plan }], true);
   }
 
   prepareDiagramPlans(plans, graph = false) {
@@ -378,6 +403,8 @@ class AutoAlign {
     const relayout = new Set();
     const skipped = [];
     const labelGroups = [];
+    const explicitLabels = new Map();
+    const explicitOwners = new Set();
     let moved = 0;
     let resized = 0;
     let movedPools = 0;
@@ -385,13 +412,16 @@ class AutoAlign {
     for (const { diagram, plan } of plans) {
       if (plan.reason) return { reason: SKIP_REASONS[plan.reason] };
       labelGroups.push({ diagram, gateways: plan.labelGateways, stabilize: graph });
-      for (const [{ element, box, kind }, next] of plan.boxes) {
+      for (const [figure, next] of plan.boxes) {
+        const { element, box, kind } = figure;
         bounds.set(element, next);
         const delta = { x: next.x - box.x, y: next.y - box.y };
         if (delta.x || delta.y) {
           moved++;
           if (kind === 'pool') movedPools++;
-          for (const label of element.labels) bounds.set(label, translate(label, delta));
+          for (const label of element.labels) {
+            if (label.hidden || !plan.labels?.has(figure)) bounds.set(label, translate(label, delta));
+          }
         }
         if (next.width !== box.width || next.height !== box.height) resized++;
         for (const connection of [...element.incoming, ...element.outgoing]) {
@@ -402,6 +432,18 @@ class AutoAlign {
         relayout.delete(connection);
         if (!sameWaypoints(connection.waypoints, route)) routes.set(connection, route);
       }
+      for (const [entry, boxes] of plan.labels ?? []) {
+        const owner = entry.element ?? entry.connection;
+        if (!boxes.length) continue;
+        explicitOwners.add(owner);
+        const labels = owner.labels.filter((label) => !label.hidden);
+        for (const [index, box] of boxes.entries()) {
+          const label = labels[index];
+          const changed = !sameBox(label, box);
+          const missing = !getDi(owner).label?.bounds && (bounds.has(owner) || routes.has(owner));
+          if (changed || missing) explicitLabels.set(label, box);
+        }
+      }
       for (const { scope, reason } of plan.skipped) {
         skipped.push({ scope, name: regionName(scope), reason: SKIP_REASONS[reason], hint: SKIP_HINTS[reason] });
       }
@@ -409,7 +451,7 @@ class AutoAlign {
 
     const result = { moved, resized, rerouted: routes.size + relayout.size, skipped, movedPools,
       reroutedMessages: [...routes.keys()].filter((connection) => is(connection, 'bpmn:MessageFlow')).length };
-    return this.prepareCommand(bounds, routes, [...relayout], labelGroups, result);
+    return this.prepareCommand(bounds, routes, [...relayout], labelGroups, result, explicitLabels, explicitOwners);
   }
 }
 

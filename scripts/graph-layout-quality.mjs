@@ -20,6 +20,9 @@ const hard = [];
 const review = [];
 const exact = {};
 const cases = {};
+const collaborations = new Set(['collaboration', 'order-fulfilment']);
+const messagePaths = (diagram, plan) => diagram.messageFlows.map((edge) => pathOf(plan, edge)
+  .map(({ x, y }) => [x, y]));
 
 function digest(diagram, plan) {
   const edges = [...diagram.edges, ...diagram.auxiliary, ...diagram.messageFlows];
@@ -94,9 +97,9 @@ for (const [name, load] of fixtures) {
   const graph = await planGraphLayout(diagram, graphGaps, stages);
   const legacy = planAlignment(diagram, graphGaps);
   exact[name] = { original: exactPlans(diagram, graph, legacy), perturbed: [] };
-  const expectedReason = reference?.cases[name]?.reason;
+  const expectedReason = collaborations.has(name) ? null : reference?.cases[name]?.reason;
   if (reference && expectedReason !== (graph.reason ?? null)) hard.push({ name, expectedReason, actual: graph.reason });
-  if (graph.reason && !['graphCollaboration', 'graphGroup', 'graphNestedLanes', 'graphMissingLane'].includes(graph.reason)) {
+  if (graph.reason && !['graphGroup', 'graphNestedLanes', 'graphMissingLane'].includes(graph.reason)) {
     hard.push({ name, reason: graph.reason });
   }
   const legacyMetrics = measure(diagram, legacy, stages);
@@ -106,6 +109,10 @@ for (const [name, load] of fixtures) {
     reason: graph.reason ?? null, legacy: legacyMetrics, final, shared,
     stages: summarizeStages(stages, graph), r5: { required: straightFlows[name] ?? [], exceptions: straightExceptions[name] ?? {} } };
   if (!final) continue;
+  if (collaborations.has(name)) {
+    const costs = (plan) => routeCost(diagram.messageFlows.map((edge) => pathOf(plan, edge)));
+    cases[name].messages = { graph: costs(graph), legacy: costs(legacy) };
+  }
 
   const crossingLimit = Math.min(reference?.cases[name]?.final?.routeCost[0] ?? final.routeCost[0], legacyMetrics.routeCost[0]);
   const bends = (plan, edge) => Math.max(0, simplifyRoute(pathOf(plan, edge)).length - 2);
@@ -130,14 +137,21 @@ for (const [name, load] of fixtures) {
   for (const amount of [15, 40, 120]) {
     for (let seed = 1; seed <= seeds; seed++) {
       const input = perturb(await load(), amount, seed);
+      const nextLegacy = planAlignment(input, graphGaps);
+      if (collaborations.has(name)) {
+        for (const [index, edge] of input.messageFlows.entries()) {
+          edge.points = [{ x: amount, y: seed }, { x: index, y: -amount }];
+        }
+        input.diElements = input.diElements.toReversed();
+      }
       const diagnostics = [];
       const next = await planGraphLayout({ ...input, figures: input.figures.toReversed(), edges: input.edges.toReversed(),
-        auxiliary: input.auxiliary.toReversed() }, graphGaps, diagnostics);
-      const nextLegacy = planAlignment(input, graphGaps);
+        auxiliary: input.auxiliary.toReversed(), messageFlows: input.messageFlows.toReversed() }, graphGaps, diagnostics);
       if (next.reason) hard.push({ name, amount, seed, reason: next.reason });
       else {
         try {
           assert.deepEqual(normalized(input, next), geometry);
+          if (collaborations.has(name)) assert.deepEqual(messagePaths(input, next), messagePaths(diagram, graph));
         } catch {
           hard.push({ name, amount, seed, r6: 'Geometry or route changed' });
         }
@@ -164,6 +178,12 @@ const report = { gaps: graphGaps, cases, hard, review, exact };
 if (process.argv.includes('--check-routes')) {
   const current = JSON.parse(await readFile(currentUrl, 'utf8'));
   assert.deepEqual(exact, { ...reference.exact, ...current.exact }, 'Routes differ from the expected snapshot');
+  for (const name of Object.keys(reference.exact)) {
+    assert.deepEqual(exact[name].original.legacy, reference.exact[name].original.legacy, name);
+    if (reference.exact[name].perturbed.runs) {
+      assert.deepEqual(exact[name].perturbed.legacy, reference.exact[name].perturbed.legacy, name);
+    }
+  }
 }
 if (process.argv.includes('--quality') && hard.length) process.exitCode = 1;
 if (process.argv.includes('--snapshot')) {

@@ -24,7 +24,7 @@ export function modelOrder(scope) {
   // Preserve unmatched flows so the planner can reject an incomplete scope.
   const sources = new Set(nodes);
   for (const [source, flows] of outgoing) if (!sources.has(source)) edges.push(...flows);
-  return { nodes, edges, lanes: (model?.laneSets ?? []).flatMap((set) => set.lanes) };
+  return { nodes, edges, lanes: (model?.laneSets ?? []).flatMap((set) => set.lanes ?? []) };
 }
 
 function components(nodes, outgoing) {

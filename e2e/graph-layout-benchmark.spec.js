@@ -1,17 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { graphBenchmarkWorkload } from '../scripts/graph-benchmark-workload.js';
+import { collaborationBenchmarkXml, graphBenchmarkWorkload } from '../scripts/graph-benchmark-workload.js';
 import { openDiagram, preview } from './helpers/diagram.js';
 
-test('measures graph preview on the 200-node benchmark', async ({ page, browser }) => {
-  test.skip(process.env.BPMN_GRAPH_BENCHMARK !== '1', 'Run on idle, fixed hardware.');
-  test.setTimeout(120_000);
-  const { diagram, xml } = graphBenchmarkWorkload();
-  const filename = 'graph-benchmark.bpmn';
-  await page.goto('/');
-  await openDiagram(page, { name: filename, mimeType: 'application/xml', buffer: Buffer.from(await xml()) }, filename);
-  await page.evaluate(() => {
+async function measureAlignment(page, lateRefusal) {
+  await page.evaluate((expectsRefusal) => {
     const dialog = document.querySelector('#alignment-preview');
     const button = document.querySelector('#align-graph');
+    const summary = document.querySelector('#alignment-summary');
     let start;
     let resolve;
     const tasks = [];
@@ -22,28 +17,59 @@ test('measures graph preview on the 200-node benchmark', async ({ page, browser 
       start = performance.now();
       window.previewTiming = new Promise((done) => { resolve = done; });
     }, { capture: true });
-    new MutationObserver(() => {
-      if (!dialog.open) return;
+    const finish = () => {
+      if (!resolve || (expectsRefusal ? summary.textContent !== 'Не удалось выровнять' : !dialog.open)) return;
       const end = performance.now();
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve({
-        preview: Math.round(end - start),
+      const done = resolve;
+      resolve = undefined;
+      const stages = Object.fromEntries(performance.getEntriesByType('measure')
+        .filter(({ name, startTime }) => name.startsWith('bpmn:graph:') && startTime >= start)
+        .map(({ name, duration }) => [name.split(':').at(-1), Math.round(duration * 10) / 10]));
+      requestAnimationFrame(() => requestAnimationFrame(() => done({
+        elapsed: Math.round(end - start),
+        stages,
         longestTask: Math.max(0, ...tasks.filter((task) => task.start < end && task.start + task.duration >= start)
           .map(({ duration }) => duration))
       })));
-    }).observe(dialog, { attributes: true, attributeFilter: ['open'] });
-  });
+    };
+    const observer = new MutationObserver(finish);
+    observer.observe(dialog, { attributes: true, attributeFilter: ['open'] });
+    observer.observe(summary, { childList: true });
+  }, lateRefusal);
   const timings = [];
   for (let i = 0; i < 6; i++) {
     await page.locator('#align-graph').click();
-    await expect(preview(page)).toBeVisible({ timeout: 15_000 });
+    if (lateRefusal) {
+      await expect(page.locator('#alignment-summary')).toHaveText('Не удалось выровнять', { timeout: 15_000 });
+      await expect(page.locator('#alignment-result')).toContainText('Note_3_1');
+      await expect(preview(page)).toBeHidden();
+      await expect(page.locator('#undo')).toBeDisabled();
+    } else {
+      await expect(preview(page)).toBeVisible({ timeout: 15_000 });
+    }
     timings.push(await page.evaluate(() => window.previewTiming));
-    await page.keyboard.press('Escape');
-    await expect(preview(page)).toBeHidden();
+    if (!lateRefusal) {
+      await page.keyboard.press('Escape');
+      await expect(preview(page)).toBeHidden();
+    }
   }
-  const [cold, ...warm] = timings;
-  console.log(JSON.stringify({
-    chromium: browser.version(), nodes: diagram.figures.length, flows: diagram.edges.length,
-    cold, warm, medianWarm: warm.map(({ preview }) => preview).sort((a, b) => a - b)[2],
-    overThreshold: warm.filter(({ longestTask }) => longestTask >= 200).length
-  }));
-});
+  return timings;
+}
+
+for (const name of ['process', 'collaboration', 'late-refusal']) {
+  test(`measures graph layout on the 200-node ${name} benchmark`, async ({ page, browser }) => {
+    test.skip(process.env.BPMN_GRAPH_BENCHMARK !== '1', 'Run on idle, fixed hardware.');
+    test.setTimeout(120_000);
+    const lateRefusal = name === 'late-refusal';
+    const xml = await (name === 'process' ? graphBenchmarkWorkload().xml() : collaborationBenchmarkXml({ lateRefusal }));
+    const filename = `graph-benchmark-${name}.bpmn`;
+    await page.goto('/');
+    await openDiagram(page, { name: filename, mimeType: 'application/xml', buffer: Buffer.from(xml) }, filename);
+    const [cold, ...warm] = await measureAlignment(page, lateRefusal);
+    console.log(JSON.stringify({
+      name, chromium: browser.version(), target: lateRefusal ? 'refusal' : 'preview', cold, warm,
+      medianWarm: warm.map(({ elapsed }) => elapsed).toSorted((a, b) => a - b)[2],
+      overThreshold: warm.filter(({ longestTask }) => longestTask >= 200).length
+    }));
+  });
+}

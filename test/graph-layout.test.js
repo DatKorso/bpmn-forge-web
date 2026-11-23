@@ -226,10 +226,9 @@ test('refuses atomically when a note cannot fit without changing process geometr
   assert.equal(plan.routes.size, 0);
 });
 
-test('refuses collaboration, groups, nested lanes and missing lane membership atomically', async () => {
+test('refuses groups, nested lanes and missing lane membership atomically', async () => {
   const xml = await readFile(new URL('./fixtures/tight-pool.bpmn', import.meta.url), 'utf8');
   const cases = [
-    [await readFixture('collaboration.bpmn'), 'graphCollaboration'],
     [await readDiagram(xml.replace('</bpmn:process>', '<bpmn:group id="G" /></bpmn:process>')), 'graphGroup'],
     [await readDiagram(xml.replace('</bpmn:lane>', '<bpmn:childLaneSet id="Child"><bpmn:lane id="Nested" /></bpmn:childLaneSet></bpmn:lane>')), 'graphNestedLanes'],
     [await readDiagram(xml.replace('<bpmn:flowNodeRef>Start</bpmn:flowNodeRef>', '')), 'graphMissingLane']

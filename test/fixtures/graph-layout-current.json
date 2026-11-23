@@ -84,6 +84,123 @@
         }
       }
     },
+    "collaboration": {
+      "nodes": 4,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          242
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 365800
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          122
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 155400
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Sender",
+          "elk": {
+            "area": 20640,
+            "routeCost": [
+              0,
+              0,
+              0,
+              58
+            ],
+            "routedFlows": 1
+          },
+          "packed": {
+            "area": 20800,
+            "overlaps": [],
+            "straightPassage": [
+              "Ready"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              60
+            ]
+          }
+        },
+        {
+          "scope": "Receiver",
+          "elk": {
+            "area": 15520,
+            "routeCost": [
+              0,
+              0,
+              0,
+              58
+            ],
+            "routedFlows": 1
+          },
+          "packed": {
+            "area": 15840,
+            "overlaps": [],
+            "straightPassage": [
+              "Received"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              62
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      },
+      "messages": {
+        "graph": [
+          0,
+          0,
+          1,
+          250
+        ],
+        "legacy": [
+          0,
+          0,
+          0,
+          270
+        ]
+      }
+    },
     "compact-loop": {
       "nodes": 5,
       "reason": null,
@@ -326,6 +443,126 @@
         "exceptions": {
           "Approved": "The default crosses from the review lane into the accounting lane."
         }
+      }
+    },
+    "order-fulfilment": {
+      "nodes": 7,
+      "reason": null,
+      "legacy": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          644
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 897000
+      },
+      "final": {
+        "r1": [],
+        "r2": [],
+        "r3": [],
+        "r4": [],
+        "localRetreat": 0,
+        "routeCost": [
+          0,
+          0,
+          0,
+          294
+        ],
+        "straightDefaults": [
+          0,
+          0
+        ],
+        "area": 341600
+      },
+      "shared": [],
+      "stages": [
+        {
+          "scope": "Sales",
+          "elk": {
+            "area": 35680,
+            "routeCost": [
+              0,
+              0,
+              0,
+              174
+            ],
+            "routedFlows": 3
+          },
+          "packed": {
+            "area": 35680,
+            "overlaps": [],
+            "straightPassage": [
+              "ToRecord",
+              "ToDispatch",
+              "Done"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              174
+            ]
+          }
+        },
+        {
+          "scope": "Warehouse",
+          "elk": {
+            "area": 33280,
+            "routeCost": [
+              0,
+              0,
+              0,
+              116
+            ],
+            "routedFlows": 2
+          },
+          "packed": {
+            "area": 33600,
+            "overlaps": [],
+            "straightPassage": [
+              "ToPack",
+              "PendingTracking"
+            ]
+          },
+          "routed": {
+            "routeCost": [
+              0,
+              0,
+              0,
+              120
+            ]
+          }
+        }
+      ],
+      "r5": {
+        "required": [],
+        "exceptions": {}
+      },
+      "messages": {
+        "graph": [
+          0,
+          0,
+          2,
+          580
+        ],
+        "legacy": [
+          0,
+          0,
+          0,
+          565
+        ]
       }
     },
     "tight-pool": {
@@ -927,6 +1164,24 @@
         "legacy": "0e7ba761eb907f975798ea3dba514443a5d806d7b986546fb43d48760376002e"
       }
     },
+    "collaboration": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "e5dee60f324b7b2a3d50f7101e05d2184311dc4385563666a6424abb2afd45d3"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "a2ada87b6c94eb8f94f2896d8602ebd789dec1d2ab90dbe4138dfa7b622a53e2"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "f382cb59cc3e5f00d3f35d39177177098f89817d5c156b236355d02a68fac85b",
+        "legacy": "5f9435df9e8e302db467388cd5ccc75b3b3afdd1a76e836bba9d6207b6863c9c"
+      }
+    },
     "compact-loop": {
       "original": {
         "graph": {
@@ -979,6 +1234,24 @@
         "runs": 30,
         "graph": "e68b1d83edeb85edde4031101d16ad759ebfd11b21dd947e8f16c35d39421f7c",
         "legacy": "fa5551fc90d663f478f134f3f310a01a547fe55bc452649e9fd7f96c8a9a7ce8"
+      }
+    },
+    "order-fulfilment": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "19f44505e0a2016f0e02e0f9c161e7b64fea2a9b240ed0d913c7c62c54e9ba05"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "78fe4daa4578f8760ed6733555b777b78d538d4ea0661d5590b4e804043fa20a"
+        }
+      },
+      "perturbed": {
+        "runs": 6,
+        "graph": "3292349ed15b9c4352bc47a20377284e4d21d1a098fe5a446f8730e896c793d8",
+        "legacy": "e9b293e21d6acc0250e187235df3bb361ebb7701b1acc974c91653f44b198051"
       }
     },
     "tight-pool": {
