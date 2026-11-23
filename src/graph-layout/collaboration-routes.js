@@ -69,11 +69,13 @@ function passageBetween(exiting, entering) {
   const passage = (phase, a, b) => {
     let left = Math.floor(phase / base);
     let entered = phase % base;
-    for (const [index, frame] of exiting.entries()) {
+    for (let index = 0; index < exiting.length; index++) {
+      const frame = exiting[index];
       if (cutsInterior(a, b, frame) && (index < left || !pointIn(a, frame))) return -1;
       if (!pointIn(b, frame)) left = Math.max(left, index + 1);
     }
-    for (const [index, frame] of entering.entries()) {
+    for (let index = 0; index < entering.length; index++) {
+      const frame = entering[index];
       const inside = pointIn(b, frame);
       if (index < entered && !inside) return -1;
       if (cutsInterior(a, b, frame)) {
@@ -155,7 +157,10 @@ function findPath(geometry, lines, occupied, stacking) {
       right: Math.min(across.right, right(endpointBounds) + alongPadding) };
   const candidate = route(nearby);
   if (candidate && routeCost([candidate], lines).slice(0, 2).every((value) => value === 0)) return candidate;
-  return route(across) ?? route(world);
+  const sameWindow = (a, b) => a.left === b.left && a.right === b.right &&
+    a.top === b.top && a.bottom === b.bottom;
+  const acrossCandidate = sameWindow(nearby, across) ? candidate : route(across);
+  return acrossCandidate ?? (sameWindow(across, world) ? null : route(world));
 }
 
 function movesAway(anchor, next, box, inward) {
@@ -233,7 +238,8 @@ function placeLabel(size, path, obstacles, diagonals) {
   return null;
 }
 
-export function finishCollaborationRoutes(diagram, collaboration, state, fixedLabels) {
+export function finishCollaborationRoutes(diagram, collaboration, state, fixedLabels, axis, timing = () => {}) {
+  let start = performance.now();
   const { boxes } = state;
   const { messages, auxiliary, owner } = collaboration;
   const associations = auxiliary.filter(({ type }) => type === 'bpmn:Association');
@@ -258,6 +264,10 @@ export function finishCollaborationRoutes(diagram, collaboration, state, fixedLa
   const ordered = [...messages.toSorted((a, b) => separation(a) - separation(b)), ...associations];
   for (const edge of ordered) {
     const message = edge.type === 'bpmn:MessageFlow';
+    if (edge === associations[0]) {
+      timing('messages', start);
+      start = performance.now();
+    }
     const fail = (reason) => ({
       reason, scope: message ? diagram.root : owner.get(edge.source) ?? diagram.root, elementId: edge.id
     });
@@ -265,7 +275,7 @@ export function finishCollaborationRoutes(diagram, collaboration, state, fixedLa
     const sourcePool = owner.get(edge.source);
     const targetPool = owner.get(edge.target);
     const stacking = message && sourcePool && targetPool && {
-      vertical: sourcePool.horizontal === false, frames: [boxes.get(sourcePool), boxes.get(targetPool)]
+      vertical: axis === 'x', frames: [boxes.get(sourcePool), boxes.get(targetPool)]
     };
     const route = geometry && findPath(geometry, lines, occupied, stacking);
     if (!route || !routeIsValid(route, geometry)) return fail(message ? 'graphMessageRouting' : 'graphAssociationRouting');
@@ -291,5 +301,6 @@ export function finishCollaborationRoutes(diagram, collaboration, state, fixedLa
     }
     routes.set(edge, route);
   }
+  timing(associations.length ? 'associations' : 'messages', start);
   return { routes, labels };
 }

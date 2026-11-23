@@ -34,7 +34,8 @@ function layout(vertical = false) {
     return edge;
   }
 
-  const run = (obstacles = []) => finishCollaborationRoutes({ root, figures }, { messages, auxiliary, order, owner }, state, obstacles);
+  const run = (obstacles = []) => finishCollaborationRoutes(
+    { root, figures }, { messages, auxiliary, order, owner }, state, obstacles, vertical ? 'x' : 'y');
   return { shape, connect, state, run, root };
 }
 
@@ -42,11 +43,11 @@ const segments = (points) => points.slice(1).map((point, index) => [points[index
 const crosses = (points, box) => segments(points).some(([a, b]) => cutsInterior(a, b, box));
 
 for (const vertical of [false, true]) {
-  const directions = vertical ? 'vertical' : 'horizontal';
-  test(`separates opposing message routes directly between ${directions} participants`, () => {
+  const axis = vertical ? 'x' : 'y';
+  test(`separates opposing messages directly between mixed participants along ${axis}`, () => {
     const { shape, connect, run } = layout(vertical);
     const sender = shape('Sender', 'pool', [10, 0, 300, 140], { header: 30 });
-    const receiver = shape('Receiver', 'pool', [10, 240, 300, 140], { header: 30 });
+    const receiver = shape('Receiver', 'pool', [10, 240, 300, 140], { header: 30, horizontal: vertical });
     const delivered = connect('Delivered', sender, receiver);
     const accepted = connect('Accepted', receiver, sender);
     const { routes, reason } = run();
@@ -55,7 +56,6 @@ for (const vertical of [false, true]) {
     assert.equal(forward.length, 2);
     assert.equal(backward.length, 2);
     assert.deepEqual(routeCost([forward, backward]).slice(0, 2), [0, 0]);
-    const axis = vertical ? 'x' : 'y';
     const far = vertical ? right : bottom;
     assert.equal(forward[0][axis], far(sender.box));
     assert.equal(forward.at(-1)[axis], receiver.box[axis]);
@@ -63,9 +63,9 @@ for (const vertical of [false, true]) {
     assert.equal(backward.at(-1)[axis], far(sender.box));
   });
 
-  test(`leaves nested frames once, bypasses the middle ${directions} participant and docks on the circular event`, () => {
+  test(`leaves nested frames once, bypasses the middle pool and docks on the event along ${axis}`, () => {
     const { shape, connect, run } = layout(vertical);
-    const left = shape('Sender', 'pool', [10, 0, 360, 240], { header: 30 });
+    const left = shape('Sender', 'pool', [10, 0, 360, 240], { header: 30, horizontal: vertical });
     const expanded = shape('Expanded', 'node', [70, 40, 250, 160],
       { type: 'bpmn:SubProcess', expanded: true, parent: left });
     const nested = shape('Nested', 'node', [95, 80, 180, 100],
@@ -79,8 +79,12 @@ for (const vertical of [false, true]) {
     const { routes, reason } = run();
     assert.equal(reason, undefined);
     const path = routes.get(message);
+    const reference = [[215, 145], [386, 145], [386, 718], [165, 718], [165, 710]];
+    assert.deepEqual(path, reference.map(([x, y]) => vertical ? { x: y, y: x } : { x, y }));
     assert.ok(!crosses(path, middle.box));
     assert.ok(!crosses(path, host.box));
+    const header = { ...left.box, ...(left.horizontal ? { width: 30 } : { height: 30 }) };
+    assert.ok(!crosses(path, header));
     for (const frame of [left, expanded, nested]) {
       const firstOutside = path.findIndex(({ x, y }) => !contains(frame.box, { x, y, width: 0, height: 0 }));
       assert.ok(firstOutside > 0);

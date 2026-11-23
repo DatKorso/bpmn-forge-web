@@ -13,12 +13,16 @@ function recordGraphTiming(stage, start) {
   performance.measure(name, { start, end: performance.now() });
 }
 
-export async function planGraphLayout(diagram, gaps, diagnostics) {
+export async function planGraphLayout(diagram, gaps, diagnostics, { allowMixedPools = true } = {}) {
   const failure = (reason, scope = diagram.root, elementId) =>
     ({ boxes: new Map(), routes: new Map(), labelGateways: [], skipped: [], reason, scope, elementId });
   const collaboration = inspectCollaboration(diagram);
   const unsupported = collaboration?.reason ? collaboration : unsupportedGraph(diagram);
   if (unsupported) return failure(unsupported.reason, unsupported.scope, unsupported.elementId);
+  if (!allowMixedPools && collaboration?.pools.some(({ horizontal }) => horizontal === false) &&
+      collaboration.pools.some(({ horizontal }) => horizontal !== false)) {
+    return failure('graphMixedOrientation');
+  }
   const structures = new Map([diagram.root, ...diagram.figures.filter(({ expanded, kind }) => expanded || kind === 'pool')]
     .map((scope) => [scope, captureStructure(scope)]));
   if (collaboration?.extended) {

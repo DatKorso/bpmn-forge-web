@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="Definitions" targetNamespace="https://example.org/bpmn">
+  <bpmn:collaboration id="Collaboration">
+    <bpmn:participant id="Sender" name="Отправитель" processRef="SenderProcess" />
+    <bpmn:participant id="Receiver" name="Получатель" processRef="ReceiverProcess" />
+    <bpmn:participant id="Carrier" name="Перевозчик" />
+    <bpmn:participant id="Hidden" />
+    <bpmn:messageFlow id="Delivery" name="Передача" sourceRef="Send" targetRef="Receive" />
+    <bpmn:textAnnotation id="Note"><bpmn:text>Заметка отправителя</bpmn:text></bpmn:textAnnotation>
+    <bpmn:association id="NoteLink" sourceRef="Send" targetRef="Note" associationDirection="One" />
+  </bpmn:collaboration>
+  <bpmn:process id="SenderProcess">
+    <bpmn:laneSet id="SenderLanes">
+      <bpmn:lane id="SenderLane" name="Доставка">
+        <bpmn:flowNodeRef>Prepare</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Split</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Send</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Merge</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:task id="Prepare" />
+    <bpmn:exclusiveGateway id="Split" name="Готово?" default="Ready" />
+    <bpmn:sendTask id="Send" />
+    <bpmn:exclusiveGateway id="Merge" name="Отправлено?" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="Prepared" sourceRef="Prepare" targetRef="Split" />
+    <bpmn:sequenceFlow id="Ready" name="Да" sourceRef="Split" targetRef="Send" />
+    <bpmn:sequenceFlow id="Sent" sourceRef="Send" targetRef="Merge" />
+    <bpmn:sequenceFlow id="Finished" sourceRef="Merge" targetRef="End" />
+  </bpmn:process>
+  <bpmn:process id="ReceiverProcess">
+    <bpmn:laneSet id="ReceiverLanes">
+      <bpmn:lane id="ReceiverLane" name="Приём">
+        <bpmn:flowNodeRef>Receive</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Collapsed</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:receiveTask id="Receive" />
+    <bpmn:subProcess id="Collapsed" name="Обработка">
+      <bpmn:task id="InnerA" />
+      <bpmn:task id="InnerB" />
+      <bpmn:sequenceFlow id="Inner" sourceRef="InnerA" targetRef="InnerB" />
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Received" sourceRef="Receive" targetRef="Collapsed" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="Collaboration">
+      <bpmndi:BPMNShape id="Sender_di" bpmnElement="Sender">
+        <dc:Bounds x="40.25" y="45.5" width="840" height="300" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Receiver_di" bpmnElement="Receiver" isHorizontal="false">
+        <dc:Bounds x="1100" y="480" width="320" height="650" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Carrier_di" bpmnElement="Carrier" isHorizontal="true">
+        <dc:Bounds x="1900" y="1400" width="140.25" height="180.5" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ReceiverLane_di" bpmnElement="ReceiverLane" isHorizontal="false">
+        <dc:Bounds x="1100" y="510" width="320" height="620" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SenderLane_di" bpmnElement="SenderLane">
+        <dc:Bounds x="70.25" y="45.5" width="810" height="300" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Prepare_di" bpmnElement="Prepare"><dc:Bounds x="100" y="110" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Split_di" bpmnElement="Split">
+        <dc:Bounds x="264" y="125" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="258" y="192" width="62" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Send_di" bpmnElement="Send"><dc:Bounds x="435" y="110" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Merge_di" bpmnElement="Merge">
+        <dc:Bounds x="610" y="125" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="593" y="192" width="84" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_di" bpmnElement="End"><dc:Bounds x="760" y="132" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Receive_di" bpmnElement="Receive"><dc:Bounds x="1210" y="560" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Collapsed_di" bpmnElement="Collapsed" isExpanded="true">
+        <dc:Bounds x="1175" y="710" width="190" height="350" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="InnerA_di" bpmnElement="InnerA"><dc:Bounds x="1210" y="750" width="100" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="InnerB_di" bpmnElement="InnerB"><dc:Bounds x="1210" y="910" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Inner_di" bpmnElement="Inner">
+        <di:waypoint x="1260" y="830" /><di:waypoint x="1260" y="910" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Note_di" bpmnElement="Note"><dc:Bounds x="465" y="-65" width="132" height="38" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Prepared_di" bpmnElement="Prepared">
+        <di:waypoint x="200" y="150" /><di:waypoint x="264" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Ready_di" bpmnElement="Ready">
+        <di:waypoint x="314" y="150" /><di:waypoint x="435" y="150" />
+        <bpmndi:BPMNLabel><dc:Bounds x="348" y="113" width="52" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Sent_di" bpmnElement="Sent">
+        <di:waypoint x="535" y="150" /><di:waypoint x="610" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Finished_di" bpmnElement="Finished">
+        <di:waypoint x="660" y="150" /><di:waypoint x="760" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Received_di" bpmnElement="Received">
+        <di:waypoint x="1260" y="640" /><di:waypoint x="1260" y="710" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Delivery_di" bpmnElement="Delivery">
+        <di:waypoint x="485" y="190" /><di:waypoint x="485" y="390" />
+        <di:waypoint x="1260" y="390" /><di:waypoint x="1260" y="560" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="NoteLink_di" bpmnElement="NoteLink">
+        <di:waypoint x="490" y="110" /><di:waypoint x="490" y="-27" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

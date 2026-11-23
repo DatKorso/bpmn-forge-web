@@ -6,6 +6,7 @@ import { planGraphLayout } from '../src/graph-layout/index.js';
 import { inspectCollaboration } from '../src/graph-layout/support.js';
 import { readDiagram, readFixture } from './helpers/read-fixture.js';
 import { boxOf, graphGaps, pathOf } from './helpers/layout-metrics.js';
+import { compactBenchmarkXml } from '../scripts/graph-benchmark-workload.js';
 
 const find = (diagram, id) => diagram.figures.find((figure) => figure.id === id);
 
@@ -25,12 +26,18 @@ function removeMessages(diagram) {
   diagram.diElements = diagram.diElements.filter(({ bpmnElement }) => !models.has(bpmnElement));
 }
 
-test('each pool has its isolated layout and the black box keeps its dimensions', async () => {
-  const diagram = await readFixture('order-fulfilment.bpmn');
+for (const axis of ['x', 'y']) test(`each mixed pool has its isolated layout in a row along ${axis}`, async () => {
+  const diagram = await readDiagram(await compactBenchmarkXml(axis));
   const { owner, pools } = inspectCollaboration(diagram);
   const plan = await planGraphLayout(diagram, graphGaps);
   assert.equal(plan.reason, undefined);
-  assert.deepEqual(pools.map((pool) => boxOf(plan, pool).x), pools.map(() => pools[0].box.x));
+  const cross = axis === 'x' ? 'y' : 'x';
+  const size = axis === 'x' ? 'width' : 'height';
+  assert.deepEqual(pools.map((pool) => boxOf(plan, pool)[cross]), pools.map(() => pools[0].box[cross]));
+  assert.deepEqual([boxOf(plan, pools[0]).x, boxOf(plan, pools[0]).y], [40.25, 45.5]);
+  const [sender, receiver, carrierBox] = pools.map((pool) => boxOf(plan, pool));
+  assert.equal(receiver[axis] - (sender[axis] + sender[size]), 80);
+  assert.equal(carrierBox[axis] - (receiver[axis] + receiver[size]), graphGaps[axis]);
   for (const pool of pools) {
     const figures = diagram.figures.filter((figure) => owner.get(figure) === pool);
     const edges = diagram.edges.filter(({ source }) => owner.get(source) === pool);
@@ -47,6 +54,54 @@ test('each pool has its isolated layout and the black box keeps its dimensions',
   const final = boxOf(plan, carrier);
   assert.equal(final.width, carrier.box.width);
   assert.equal(final.height, carrier.box.height);
+});
+
+test('a one-to-one tie stacks along Y regardless of a side-by-side input or hidden participant', async () => {
+  const xml = (await compactBenchmarkXml('y')).replace(/<bpmndi:BPMNShape id="Carrier_di"[\s\S]*?<\/bpmndi:BPMNShape>/, '');
+  const diagram = await readDiagram(xml);
+  const [sender, receiver] = inspectCollaboration(diagram).pools;
+  receiver.box = { ...receiver.box, y: sender.box.y };
+  const first = await planGraphLayout(diagram, { x: 101, y: 90 });
+  assert.equal(first.reason, undefined);
+  const a = boxOf(first, sender);
+  const b = boxOf(first, receiver);
+  assert.equal(a.x, b.x);
+  assert.equal(b.y, a.y + a.height + 90);
+  diagram.root.model.participants.reverse();
+  const reversed = await planGraphLayout(diagram, { x: 101, y: 90 });
+  assert.equal(reversed.reason, undefined);
+  assert.deepEqual(boxOf(reversed, sender), a);
+  assert.deepEqual(boxOf(reversed, receiver), b);
+
+  removeMessages(diagram);
+  receiver.box = { ...receiver.box, y: sender.box.y + (sender.box.height - receiver.box.height) / 2 };
+  const tied = await planGraphLayout(diagram, { x: 0, y: 0 });
+  assert.equal(tied.reason, undefined);
+  const top = boxOf(tied, receiver);
+  assert.equal(boxOf(tied, sender).y, top.y + top.height);
+  diagram.root.model.participants.reverse();
+  const swapped = await planGraphLayout(diagram, { x: 0, y: 0 });
+  assert.equal(swapped.reason, undefined);
+  const swappedTop = boxOf(swapped, sender);
+  assert.equal(boxOf(swapped, receiver).y, swappedTop.y + swappedTop.height);
+});
+
+test('a two-to-two tie gives the empty vertical frame a vote and stacks along Y', async () => {
+  const xml = (await compactBenchmarkXml('y'))
+    .replace('<bpmn:participant id="Hidden" />', '<bpmn:participant id="Hidden" processRef="Empty" />')
+    .replace('<bpmndi:BPMNDiagram id="Diagram">', '<bpmn:process id="Empty" /><bpmndi:BPMNDiagram id="Diagram">')
+    .replace('</bpmndi:BPMNPlane>', `<bpmndi:BPMNShape id="Hidden_di" bpmnElement="Hidden" isHorizontal="false">
+      <dc:Bounds x="2200" y="1700" width="140.5" height="220.25" />
+    </bpmndi:BPMNShape></bpmndi:BPMNPlane>`);
+  const diagram = await readDiagram(xml);
+  const { pools } = inspectCollaboration(diagram);
+  const plan = await planGraphLayout(diagram, graphGaps);
+  assert.equal(plan.reason, undefined);
+  const boxes = pools.map((pool) => boxOf(plan, pool));
+  assert.deepEqual(boxes.map(({ x }) => x), [40.25, 40.25, 40.25, 40.25]);
+  assert.deepEqual([boxes[3].width, boxes[3].height], [140.5, 220.25]);
+  const last = boxes.at(-1);
+  assert.equal(last.y + last.height - boxes[0].y, boxes.reduce((sum, box) => sum + box.height, 80 + 2 * graphGaps.y));
 });
 
 test('vertical pools use visual order, break center ties by model order and keep the fractional row anchor', async () => {
@@ -162,13 +217,13 @@ test('notes use model order across pools and keep valid projected gateway labels
 });
 
 test('a late label refusal drops all planned changes and leaves the input intact', async () => {
-  const diagram = await readFixture('collaboration.bpmn');
+  const diagram = await readDiagram(await compactBenchmarkXml('x'));
   const [message] = diagram.messageFlows;
   message.labels = [{ x: 0, y: 0, width: Infinity, height: 20 }];
   const before = exportedGeometry(diagram, { boxes: new Map(), routes: new Map() });
   const stages = [];
   const plan = await planGraphLayout(diagram, graphGaps, stages);
-  assert.equal(stages.length, 2);
+  assert.equal(stages.length, 3);
   assert.equal(plan.reason, 'graphConnectionLabel');
   assert.equal(plan.elementId, message.id);
   assert.equal(plan.boxes.size + plan.routes.size, 0);

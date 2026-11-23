@@ -1343,6 +1343,42 @@
         "graph": "e86d68a1494bf483d331caf0814fe224cd596a985c15c41d085b027196d50521",
         "legacy": "2cc3c03eb5d6147f0b649eb3773fd43650442798facb78a10f5b05f26efed5c6"
       }
+    },
+    "compact-y": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "3517633fe16418d6e50832e835f642781f9fc049468f885b8d106cf059dc01ee"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "903ae46945f7fd30f4a851981c6237e89e8caa0e85c4fc4c007ebcfdfd294c4e"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "fb24a7713d7907ad14b8bee212d21e3f57b1c5aee580a1b2c5cb9ba15b14c651",
+        "legacy": "cbdbf34ac6f11b3023a8490dd99af8d31203cc56fea62766d76ae57e4e76f066"
+      }
+    },
+    "compact-x": {
+      "original": {
+        "graph": {
+          "reason": null,
+          "routes": "7e3b736f2b3e4bf4eb757d2c3aaa8efef2f11853e9356e08431d8b6336b607b8"
+        },
+        "legacy": {
+          "reason": null,
+          "skipped": [],
+          "routes": "903ae46945f7fd30f4a851981c6237e89e8caa0e85c4fc4c007ebcfdfd294c4e"
+        }
+      },
+      "perturbed": {
+        "runs": 30,
+        "graph": "dbde65662673ce1d4e5b3e82ca7099d0baaf5c42dd3048600325adb8e76c53db",
+        "legacy": "cbdbf34ac6f11b3023a8490dd99af8d31203cc56fea62766d76ae57e4e76f066"
+      }
     }
   }
 }

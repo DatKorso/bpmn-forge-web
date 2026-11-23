@@ -1,6 +1,8 @@
 // Chosen from the BPMN model before evaluating placement changes.
 export const straightFlows = {
   'acyclic-reorder': ['BA'],
+  'compact-x': ['Ready'],
+  'compact-y': ['Ready'],
   'invoice-approval': ['Reviewed', 'Pay'],
   'tight-pool': ['StartToReview', 'DecisionToEnd'],
   'split-merge': ['Main']

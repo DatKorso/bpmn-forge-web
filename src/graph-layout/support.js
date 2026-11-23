@@ -99,8 +99,6 @@ export function inspectCollaboration(diagram) {
     pools.push(pool);
   }
   if (participants.size && !pools.length) return failure('graphNoPools', rootScope, participants.values().next().value);
-  const mixed = pools.find(({ horizontal }) => (horizontal !== false) !== (pools[0].horizontal !== false));
-  if (mixed) return failure('graphMixedOrientation', mixed, modelOf(mixed));
 
   function participantOf(model) {
     for (let item = model; item; item = item.$parent) {
@@ -234,7 +232,7 @@ export function inspectCollaboration(diagram) {
       if (issue) return issue;
       if (lane.childLaneSet) return failure('graphNestedLanes', scope, lane);
       if ((di.get(lane)[0].isHorizontal !== false) !== (pool.horizontal !== false)) {
-        return failure('graphMixedOrientation', scope, lane);
+        return failure('graphLaneOrientation', scope, lane);
       }
       for (const member of lane.flowNodeRef ?? []) {
         if (!members.has(member) || laneOf.has(member)) return failure('graphOwnership', scope, member);

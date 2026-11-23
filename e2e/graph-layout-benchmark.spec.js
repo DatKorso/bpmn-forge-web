@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { collaborationBenchmarkXml, graphBenchmarkWorkload } from '../scripts/graph-benchmark-workload.js';
-import { openDiagram, preview } from './helpers/diagram.js';
+import { readFile } from 'node:fs/promises';
+import { collaborationBenchmarkXml, compactBenchmarkProfiles, compactBenchmarkXml, graphBenchmarkWorkload,
+  mixedBenchmarkProfiles } from '../scripts/graph-benchmark-workload.js';
+import { applyPreview, downloadDiagram, openDiagram, preview, readDiagram } from './helpers/diagram.js';
 
-async function measureAlignment(page, lateRefusal) {
+async function measureAlignment(page, lateRefusal, applyLast) {
   await page.evaluate((expectsRefusal) => {
     const dialog = document.querySelector('#alignment-preview');
     const button = document.querySelector('#align-graph');
@@ -49,27 +51,47 @@ async function measureAlignment(page, lateRefusal) {
     }
     timings.push(await page.evaluate(() => window.previewTiming));
     if (!lateRefusal) {
-      await page.keyboard.press('Escape');
+      if (applyLast && i === 5) await applyPreview(page);
+      else await page.keyboard.press('Escape');
       await expect(preview(page)).toBeHidden();
     }
   }
   return timings;
 }
 
-for (const name of ['process', 'collaboration', 'late-refusal']) {
-  test(`measures graph layout on the 200-node ${name} benchmark`, async ({ page, browser }) => {
+for (const name of ['process', 'collaboration', 'late-refusal', ...compactBenchmarkProfiles, ...Object.keys(mixedBenchmarkProfiles)]) {
+  test(`measures graph layout on the ${name} benchmark`, async ({ page, browser }) => {
     test.skip(process.env.BPMN_GRAPH_BENCHMARK !== '1', 'Run on idle, fixed hardware.');
     test.setTimeout(120_000);
     const lateRefusal = name === 'late-refusal';
-    const xml = await (name === 'process' ? graphBenchmarkWorkload().xml() : collaborationBenchmarkXml({ lateRefusal }));
+    const size = Number(process.env.BPMN_GRAPH_BENCHMARK_SIZE ?? 50);
+    const mixed = compactBenchmarkProfiles.includes(name) || Object.hasOwn(mixedBenchmarkProfiles, name);
+    test.skip(mixed && process.env.BPMN_GRAPH_MIXED_VERIFICATION !== '1', 'Build in graph-mixed-verification mode.');
+    const verifyRepeat = Object.hasOwn(mixedBenchmarkProfiles, name) && size === 50;
+    const xml = await (name === 'process' ? graphBenchmarkWorkload().xml() : compactBenchmarkProfiles.includes(name)
+      ? compactBenchmarkXml(name.at(-1)) : collaborationBenchmarkXml({ lateRefusal, orientations: mixedBenchmarkProfiles[name], size }));
     const filename = `graph-benchmark-${name}.bpmn`;
     await page.goto('/');
     await openDiagram(page, { name: filename, mimeType: 'application/xml', buffer: Buffer.from(xml) }, filename);
-    const [cold, ...warm] = await measureAlignment(page, lateRefusal);
+    const [cold, ...warm] = await measureAlignment(page, lateRefusal, verifyRepeat);
     console.log(JSON.stringify({
-      name, chromium: browser.version(), target: lateRefusal ? 'refusal' : 'preview', cold, warm,
+      name, size, chromium: browser.version(), target: lateRefusal ? 'refusal' : 'preview', cold, warm,
       medianWarm: warm.map(({ elapsed }) => elapsed).toSorted((a, b) => a - b)[2],
       overThreshold: warm.filter(({ longestTask }) => longestTask >= 200).length
     }));
+    if (verifyRepeat) {
+      const download = await downloadDiagram(page);
+      const aligned = await readDiagram(page, download);
+      const repeat = async () => {
+        await page.locator('#align-graph').click();
+        await expect(page.locator('#alignment-summary')).toHaveText('Изменений нет', { timeout: 15_000 });
+        await expect(preview(page)).toBeHidden();
+        expect(await readDiagram(page, await downloadDiagram(page))).toEqual(aligned);
+      };
+      await repeat();
+      await openDiagram(page, { name: filename, mimeType: 'application/xml', buffer: await readFile(await download.path()) }, filename);
+      await repeat();
+      await expect(page.locator('#undo')).toBeDisabled();
+    }
   });
 }

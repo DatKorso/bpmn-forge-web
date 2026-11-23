@@ -309,7 +309,7 @@ function gridCoordinates(obstacles, ports, bounds, axis, frames, margin) {
 }
 
 function addCost(a, b) {
-  return a.map((value, index) => value + b[index]);
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3], a[4] + b[4]];
 }
 
 export function routeFlow(flow, bounds, obstacles, occupied = [], options) {
@@ -388,6 +388,7 @@ function findRoute(flow, bounds, obstacles, occupiedCost, blocked, {
   const queue = new Queue();
   const best = new Map();
   const neighbors = new Map();
+  const estimates = new Map();
   const isLoop = source === target;
   const axis = flow.vertical ? 'x' : 'y';
   const sides = axis === 'y' ? [bounds.top, bounds.bottom] : [bounds.left, bounds.right];
@@ -399,28 +400,37 @@ function findRoute(flow, bounds, obstacles, occupiedCost, blocked, {
     const id = (((key(state.i, state.j) * phaseCount + state.phase) * directionCount + state.direction) *
       (isLoop ? starts.length : 1)) +
       (isLoop ? state.start : 0);
-    if (best.has(id) && compareCosts(best.get(id), state.cost) <= 0) return;
+    const previous = best.get(id);
+    if (previous && compareCosts(previous, state.cost) <= 0) return;
     best.set(id, state.cost);
-    queue.push({ ...state, id, priority: priority(state) });
+    state.id = id;
+    state.priority = priority(state);
+    queue.push(state);
   }
 
-  function priority({ cost, point, direction }) {
+  function priority({ cost, point, direction, i, j }) {
     if (passage || margin > ROUTE_MARGIN) {
       // Lower bounds on the remaining turns and length keep the search near useful corridors.
       const fromAxis = direction % 2;
-      let bends = Infinity;
-      let distance = Infinity;
-      for (const [anchor, port, endDirection] of ends) {
-        const x = point.x !== port.x;
-        const y = point.y !== port.y;
-        const toAxis = endDirection % 2;
-        let turns = Number(fromAxis !== toAxis);
-        if (x && y) turns = 1 + Number(fromAxis === toAxis);
-        else if (x || y) turns = Number(fromAxis !== Number(y)) + Number(toAxis !== Number(y));
-        bends = Math.min(bends, turns);
-        distance = Math.min(distance, length(point, port) + length(port, anchor));
+      const index = key(i, j) * 2 + fromAxis;
+      let estimate = estimates.get(index);
+      if (!estimate) {
+        let bends = Infinity;
+        let distance = Infinity;
+        for (const [anchor, port, endDirection] of ends) {
+          const x = point.x !== port.x;
+          const y = point.y !== port.y;
+          const toAxis = endDirection % 2;
+          let turns = Number(fromAxis !== toAxis);
+          if (x && y) turns = 1 + Number(fromAxis === toAxis);
+          else if (x || y) turns = Number(fromAxis !== Number(y)) + Number(toAxis !== Number(y));
+          bends = Math.min(bends, turns);
+          distance = Math.min(distance, length(point, port) + length(port, anchor));
+        }
+        estimate = [bends, distance];
+        estimates.set(index, estimate);
       }
-      return [...cost.slice(0, 3), cost[3] + bends, cost[4] + distance];
+      return [cost[0], cost[1], cost[2], cost[3] + estimate[0], cost[4] + estimate[1]];
     }
     // A small tie-break preference keeps return flows away from the main line.
     if (!flow.back || !sides.every(Number.isFinite)) return cost;
@@ -437,7 +447,7 @@ function findRoute(flow, bounds, obstacles, occupiedCost, blocked, {
     const { i, j, point, start, direction } = state;
     if (best.get(state.id) !== state.cost) continue;
     const { cost } = state;
-    if (winner && compareCosts(state.priority.slice(0, emptyCost.length), winner.cost) >= 0) break;
+    if (winner && compareCosts(winner.cost, state.priority) <= 0) break;
 
     for (const [anchor, , endDirection] of exits.get(key(i, j)) ?? []) {
       if (preventReversals && direction === endDirection) continue;
@@ -454,8 +464,9 @@ function findRoute(flow, bounds, obstacles, occupiedCost, blocked, {
     }
 
     const cell = key(i, j);
-    if (!neighbors.has(cell)) {
-      const adjacent = [];
+    let adjacent = neighbors.get(cell);
+    if (!adjacent) {
+      adjacent = [];
       for (const [di, dj] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
         const ni = i + di;
         const nj = j + dj;
@@ -468,11 +479,15 @@ function findRoute(flow, bounds, obstacles, occupiedCost, blocked, {
       neighbors.set(cell, adjacent);
     }
 
-    for (const next of neighbors.get(cell)) {
+    for (const next of adjacent) {
       if (next.direction === opposite(direction)) continue;
-      const total = addCost(cost, segmentCost(point, next.point, next.direction !== direction, true));
-      enqueue({ ...next, start, previous: state, phase: advance(state.phase, point, next.point),
-        cost: total });
+      const phase = advance(state.phase, point, next.point);
+      if (phase < 0) continue;
+      const step = next.cost ??= segmentCost(point, next.point, false, true);
+      const total = addCost(cost, step);
+      if (next.direction !== direction) total[3]++;
+      enqueue({ i: next.i, j: next.j, point: next.point, direction: next.direction,
+        start, previous: state, phase, cost: total });
     }
   }
 

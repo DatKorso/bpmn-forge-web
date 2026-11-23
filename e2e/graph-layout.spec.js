@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { readDiagram as loadModel } from '../test/helpers/read-fixture.js';
 import { modelOrder } from '../src/graph-layout/model-order.js';
+import { compactBenchmarkXml } from '../scripts/graph-benchmark-workload.js';
 import { applyPreview, downloadDiagram, openDiagram, preview, readDiagram } from './helpers/diagram.js';
 
 const fixture = (name) => fileURLToPath(new URL(`../test/fixtures/${name}.bpmn`, import.meta.url));
@@ -63,8 +64,9 @@ async function expectNoChange(page) {
 }
 
 function orderOf(diagram) {
-  return [diagram.root, ...diagram.figures.filter((figure) => figure.kind === 'pool' || figure.expanded)]
-    .map((scope) => Object.values(modelOrder(scope)).map((members) => members.map(({ id }) => id)));
+  const scopes = [diagram.root, ...diagram.figures.filter((figure) => figure.kind === 'pool' || figure.expanded)];
+  return Object.fromEntries(scopes.map((scope) => [scope.id, Object.values(modelOrder(scope))
+    .map((members) => members.map(({ id }) => id))]));
 }
 
 test('graph preview, atomic undo and redo, model order, and export/reopen', async ({ page }, testInfo) => {
@@ -241,6 +243,105 @@ test('rebuilds identical geometry despite old message paths through a gateway la
     results.push(await readDiagram(page, await downloadDiagram(page)));
   }
   expect(results[1]).toEqual(results[0]);
+});
+
+for (const axis of ['x', 'y']) {
+  test(`applies mixed-orientation pools along ${axis} with one undo and a stable export`, async ({ page }) => {
+    test.skip(process.env.BPMN_GRAPH_MIXED_VERIFICATION !== '1', 'Build in graph-mixed-verification mode.');
+    const source = await compactBenchmarkXml(axis);
+    await page.goto('/');
+    await openXml(page, `mixed-${axis}.bpmn`, source);
+    const before = await downloadDiagram(page);
+    const original = await readDiagram(page, before);
+    const undo = page.locator('#undo');
+    expect(original.labels).not.toHaveProperty('Delivery');
+
+    await graphButton(page).click();
+    await expect(preview(page)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(undo).toBeDisabled();
+    expect(await readDiagram(page, await downloadDiagram(page))).toEqual(original);
+
+    await graphButton(page).click();
+    await applyPreview(page);
+    const after = await downloadDiagram(page);
+    const aligned = await readDiagram(page, after);
+    const { Sender, Receiver, Carrier, SenderLane, ReceiverLane, Note, Send } = aligned.shapes;
+    const cross = axis === 'x' ? 'y' : 'x';
+    const span = axis === 'x' ? 'width' : 'height';
+    expect([Sender.x, Sender.y]).toEqual([40.25, 45.5]);
+    expect([Receiver[cross], Carrier[cross]]).toEqual([Sender[cross], Sender[cross]]);
+    expect(Receiver[axis] - Sender[axis] - Sender[span]).toBe(80);
+    expect(Carrier.width).toBe(140.25);
+    expect(Carrier.height).toBe(180.5);
+    expect(SenderLane.x - Sender.x).toBe(30);
+    expect(ReceiverLane.y - Receiver.y).toBe(30);
+    for (const [id, expected] of [
+      ['Sender', [[30, 0], [30, Sender.height]]], ['Receiver', [[0, 30], [Receiver.width, 30]]]
+    ]) {
+      const line = page.locator(`[data-element-id="${id}"] .djs-visual > path`).first();
+      await expect(line).toBeAttached();
+      expect(await line.evaluate((path) => [0, path.getTotalLength()].map((distance) => {
+        const { x, y } = path.getPointAtLength(distance);
+        return [x, y];
+      }))).toEqual(expected);
+    }
+    for (const [id, rotated] of [['SenderLane', true], ['ReceiverLane', false]]) {
+      const label = page.locator(`[data-element-id="${id}"] .djs-visual text`).first();
+      expect(await label.evaluate((text) => Math.abs(text.transform.baseVal.consolidate()?.matrix.b ?? 0))).toBe(Number(rotated));
+    }
+    expect(aligned.routes.Inner).toHaveLength(2);
+    expect(aligned.routes.Inner[0].x).toBe(aligned.routes.Inner[1].x);
+    expect(aligned.routes.Inner[1].y).toBeGreaterThan(aligned.routes.Inner[0].y);
+    expect(aligned.labels).toHaveProperty('Delivery');
+    for (const coordinate of ['x', 'y']) {
+      expect(Note[coordinate] - original.shapes.Note[coordinate]).toBe(Send[coordinate] - original.shapes.Send[coordinate]);
+    }
+    const initialModel = await loadModel(source);
+    const finalModel = await loadModel(await fileContent(after));
+    const flags = ({ diElements }) => Object.fromEntries(diElements.filter(({ bpmnElement }) =>
+      bpmnElement.$instanceOf('bpmn:Participant') || bpmnElement.$instanceOf('bpmn:Lane'))
+      .map((di) => [di.bpmnElement.id, Object.hasOwn(di, 'isHorizontal') ? di.isHorizontal : null]));
+    expect(flags(finalModel)).toEqual(flags(initialModel));
+    expect(modelRelations(finalModel)).toEqual(modelRelations(initialModel));
+    await expectNoChange(page);
+    await undo.click();
+    await expect(undo).toBeDisabled();
+    expect(await readDiagram(page, await downloadDiagram(page))).toEqual(original);
+    await page.locator('#redo').click();
+    expect(await readDiagram(page, await downloadDiagram(page))).toEqual(aligned);
+    await reopen(page, after);
+    await expectNoChange(page);
+    await expect(undo).toBeDisabled();
+    expect(await readDiagram(page, await downloadDiagram(page))).toEqual(aligned);
+  });
+}
+
+test('the public beta delays mixed pools while preserving their DI', async ({ page }) => {
+  test.skip(process.env.BPMN_GRAPH_MIXED_VERIFICATION === '1', 'The verification build enables mixed pools.');
+  await page.goto('/');
+  await openXml(page, 'mixed-public.bpmn', await compactBenchmarkXml('y'));
+  const original = await readDiagram(page, await downloadDiagram(page));
+  await graphButton(page).click();
+  await expect(summary(page)).toHaveText('Не удалось выровнять');
+  await expect(page.locator('#alignment-result')).toContainText('Пулы на активной плоскости имеют разную ориентацию');
+  await expect(preview(page)).toBeHidden();
+  await expect(page.locator('#undo')).toBeDisabled();
+  expect(await readDiagram(page, await downloadDiagram(page))).toEqual(original);
+});
+
+test('refuses a mismatched lane by ID without changing mixed collaboration DI', async ({ page }) => {
+  const xml = (await compactBenchmarkXml('y')).replace('bpmnElement="ReceiverLane" isHorizontal="false"',
+    'bpmnElement="ReceiverLane"');
+  await page.goto('/');
+  await openXml(page, 'lane-mismatch.bpmn', xml);
+  const original = await readDiagram(page, await downloadDiagram(page));
+  await graphButton(page).click();
+  await expect(summary(page)).toHaveText('Не удалось выровнять');
+  await expect(page.locator('#alignment-result')).toContainText(/ReceiverLane.*isHorizontal.*false/);
+  await expect(preview(page)).toBeHidden();
+  await expect(page.locator('#undo')).toBeDisabled();
+  expect(await readDiagram(page, await downloadDiagram(page))).toEqual(original);
 });
 
 test('aligns the drilled-down subprocess even when its outer collaboration DI is incomplete', async ({ page }) => {

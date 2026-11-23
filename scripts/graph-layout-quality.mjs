@@ -3,24 +3,30 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { planAlignment } from '../src/alignment-plan.js';
 import { planGraphLayout } from '../src/graph-layout/index.js';
-import { boundsOf, intersects } from '../src/layout.js';
+import { boundsOf, intersects, translate } from '../src/layout.js';
 import { routeCost, simplifyRoute } from '../src/route-flows.js';
 import { readDiagram, readFixture } from '../test/helpers/read-fixture.js';
 import { graphWorkloads, graphWorkloadXml } from '../test/helpers/graph-quality-workloads.js';
 import { straightExceptions, straightFlows } from '../test/helpers/graph-straight-flows.js';
-import { elkPath, graphFixtures, graphGaps, measure, normalized, pathOf, perturb,
+import { boxOf, elkPath, graphFixtures, graphGaps, measure, normalized, pathOf, perturb,
   straightPassage } from '../test/helpers/layout-metrics.js';
+import { compactBenchmarkProfiles as mixed, compactBenchmarkXml } from './graph-benchmark-workload.js';
 
 const fixtureFiles = (await readdir(new URL('../test/fixtures/', import.meta.url))).filter((file) => file.endsWith('.bpmn'));
 const fixtures = [
   ...fixtureFiles.map((file) => [file.slice(0, -5), () => readFixture(file)]),
-  ...graphWorkloads.map((name) => [name, () => readDiagram(graphWorkloadXml(name))])
+  ...graphWorkloads.map((name) => [name, () => readDiagram(graphWorkloadXml(name))]),
+  ...mixed.map((name) => [name, async () => {
+    const diagram = await readDiagram(await compactBenchmarkXml(name.at(-1)));
+    diagram.messageFlows[0].labels = [{ x: 500, y: 375, width: 62, height: 14 }];
+    return diagram;
+  }])
 ];
 const hard = [];
 const review = [];
 const exact = {};
 const cases = {};
-const collaborations = new Set(['collaboration', 'order-fulfilment']);
+const collaborations = new Set(['collaboration', 'order-fulfilment', ...mixed]);
 const messagePaths = (diagram, plan) => diagram.messageFlows.map((edge) => pathOf(plan, edge)
   .map(({ x, y }) => [x, y]));
 
@@ -28,6 +34,25 @@ function digest(diagram, plan) {
   const edges = [...diagram.edges, ...diagram.auxiliary, ...diagram.messageFlows];
   const routes = edges.map((edge) => [edge.id, pathOf(plan, edge).map(({ x, y }) => [x, y])]);
   return createHash('sha256').update(JSON.stringify(routes)).digest('hex');
+}
+
+function mixedGeometry(diagram, plan) {
+  return {
+    note: boxOf(plan, diagram.figures.find(({ type }) => type === 'bpmn:TextAnnotation')),
+    external: [...diagram.messageFlows, ...diagram.auxiliary].map((edge) => pathOf(plan, edge)),
+    labels: [...plan.labels.values()]
+  };
+}
+
+function perturbMixed(diagram, amount, seed) {
+  const originals = new Map(diagram.figures.map((figure) => [figure, figure.box]));
+  const link = diagram.auxiliary[0];
+  perturb(diagram, amount, seed);
+  const delta = (figure) => ({ x: figure.box.x - originals.get(figure).x, y: figure.box.y - originals.get(figure).y });
+  link.target.box = translate(originals.get(link.target), delta(link.source));
+  for (const figure of diagram.figures) figure.labels = figure.labels.map((label) => translate(label, delta(figure)));
+  for (const [index, edge] of diagram.messageFlows.entries()) edge.id = edge.model.id = `RenamedMessage_${seed}_${index}`;
+  return diagram;
 }
 
 function sharedSegments(diagram, plan) {
@@ -113,6 +138,22 @@ for (const [name, load] of fixtures) {
     const costs = (plan) => routeCost(diagram.messageFlows.map((edge) => pathOf(plan, edge)));
     cases[name].messages = { graph: costs(graph), legacy: costs(legacy) };
   }
+  const mixedCase = mixed.includes(name);
+  if (mixedCase) {
+    const external = [...diagram.messageFlows, ...diagram.auxiliary];
+    const metrics = (plan) => {
+      const paths = external.map((edge) => pathOf(plan, edge));
+      const points = paths.flat().map(({ x, y }) => ({ x, y, width: 0, height: 0 }));
+      const { width, height } = boundsOf([...diagram.figures.map((figure) => boxOf(plan, figure)),
+        ...points, ...[...(plan.labels?.values() ?? [])].flat()]);
+      return { externalCost: routeCost(paths), withSequence: routeCost(paths, diagram.edges.map((edge) => pathOf(plan, edge))),
+        waypoints: paths.map((path) => simplifyRoute(path).length), area: width * height };
+    };
+    const graphMetrics = metrics(graph);
+    cases[name].external = { graph: graphMetrics, legacy: metrics(legacy) };
+    if (graphMetrics.externalCost[0] || graphMetrics.externalCost[1] ||
+        graphMetrics.waypoints[0] > 3 || graphMetrics.waypoints[1] > 4) hard.push({ name, ...graphMetrics });
+  }
 
   const crossingLimit = Math.min(reference?.cases[name]?.final?.routeCost[0] ?? final.routeCost[0], legacyMetrics.routeCost[0]);
   const bends = (plan, edge) => Math.max(0, simplifyRoute(pathOf(plan, edge)).length - 2);
@@ -133,10 +174,10 @@ for (const [name, load] of fixtures) {
       crossings: final.routeCost[0], crossingLimit, shared, missingStraight });
   }
   const geometry = normalized(diagram, graph);
-  const seeds = graphFixtures.includes(name) ? 10 : 2;
+  const seeds = graphFixtures.includes(name) || mixedCase ? 10 : 2;
   for (const amount of [15, 40, 120]) {
     for (let seed = 1; seed <= seeds; seed++) {
-      const input = perturb(await load(), amount, seed);
+      const input = (mixedCase ? perturbMixed : perturb)(await load(), amount, seed);
       const nextLegacy = planAlignment(input, graphGaps);
       if (collaborations.has(name)) {
         for (const [index, edge] of input.messageFlows.entries()) {
@@ -152,6 +193,7 @@ for (const [name, load] of fixtures) {
         try {
           assert.deepEqual(normalized(input, next), geometry);
           if (collaborations.has(name)) assert.deepEqual(messagePaths(input, next), messagePaths(diagram, graph));
+          if (mixedCase) assert.deepEqual(mixedGeometry(input, next), mixedGeometry(diagram, graph));
         } catch {
           hard.push({ name, amount, seed, r6: 'Geometry or route changed' });
         }

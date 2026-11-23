@@ -108,8 +108,6 @@ test('stops at a collapsed subprocess and checks its artifacts only on its own p
 test('checks rendered shapes, sequence edges and ownership in an expanded collaboration', async () => {
   expectFailure(await readDiagram(removeDi(collaboration, 'Prepare')), 'graphIncomplete', 'Prepare');
   expectFailure(await readDiagram(removeDi(collaboration, 'Received')), 'graphIncomplete', 'Received');
-  const mixed = collaboration.replace('bpmnElement="Receiver" isHorizontal="true"', 'bpmnElement="Receiver" isHorizontal="false"');
-  expectFailure(await readDiagram(mixed), 'graphMixedOrientation', 'Receiver');
   const duplicate = collaboration.replace('processRef="ReceiverProcess"', 'processRef="Process"');
   expectFailure(await readDiagram(duplicate), 'graphOwnership', 'Receiver');
 
@@ -128,6 +126,23 @@ test('checks rendered shapes, sequence edges and ownership in an expanded collab
     </bpmndi:BPMNShape>`
   ).join('') + '</bpmndi:BPMNPlane>');
   expectFailure(await readDiagram(badLane), 'graphOwnership', 'Prepare');
+});
+
+test('checks each lane against its own pool and treats absent DI flags as horizontal', async () => {
+  const xml = await readFile(new URL('./fixtures/graph-layout/mixed-collaboration.bpmn', import.meta.url), 'utf8');
+  const diagram = await readDiagram(xml.replace('width="840" height="300"', 'width="840" height="900"'));
+  const accepted = inspectCollaboration(diagram);
+  assert.deepEqual(accepted.pools.map(({ id, horizontal }) => [id, horizontal]),
+    [['Sender', true], ['Receiver', false], ['Carrier', true]]);
+  for (const [element, replacement, lane] of [
+    ['ReceiverLane', '', 'ReceiverLane'],
+    ['SenderLane', ' isHorizontal="false"', 'SenderLane']
+  ]) {
+    const invalid = await readDiagram(xml.replace(new RegExp(`bpmnElement="${element}"(?: isHorizontal="false")?`),
+      `bpmnElement="${element}"${replacement}`));
+    invalid.diElements.reverse();
+    expectFailure(invalid, 'graphLaneOrientation', lane);
+  }
 });
 
 test('accepts a message to a receiving boundary event and refuses invalid message endpoints', async () => {

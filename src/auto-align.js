@@ -18,6 +18,7 @@ const SKIP_REASONS = {
   poolRouting: 'расстановка пулов пропущена: не удалось разместить пулы и провести потоки сообщений',
   routing: 'не удалось провести все стрелки в обход фигур',
   graphMixedOrientation: 'Пулы на активной плоскости имеют разную ориентацию',
+  graphLaneOrientation: 'Ориентация дорожки отличается от ориентации её пула',
   graphNoPools: 'На активной плоскости не отображается ни одна рамка участника',
   graphGroup: 'Экспериментальная раскладка пока не поддерживает группы',
   graphNestedLanes: 'Экспериментальная раскладка пока не поддерживает вложенные дорожки',
@@ -40,7 +41,8 @@ const SKIP_HINTS = {
   poolStability: 'Разнесите перекрывающиеся пулы и повторите выравнивание.',
   poolRouting: 'Освободите место между пулами для потоков сообщений.',
   routing: 'Освободите проход между фигурами или увеличьте отступы.',
-  graphMixedOrientation: 'Используйте «Выровнять схему» или приведите пулы к одной ориентации.',
+  graphMixedOrientation: 'Для этой схемы доступна кнопка «Выровнять схему».',
+  graphLaneOrientation: 'Согласуйте isHorizontal дорожки с пулом. Для вертикальной дорожки укажите false.',
   graphNoPools: 'Проверьте BPMN DI участников.',
   graphGroup: 'Для этой схемы доступна кнопка «Выровнять схему».',
   graphNestedLanes: 'Для этой схемы доступна кнопка «Выровнять схему».',
@@ -382,11 +384,16 @@ class AutoAlign {
     const root = this.canvas.getRootElement();
     const diagram = snapshot(root, this.shapesByRoot(root).get(root) ?? [], this.elementRegistry, true);
     const end = performance.now();
-    for (const stage of ['snapshot', 'local', 'pools', 'notes', 'routes']) performance.clearMeasures(`bpmn:graph:${stage}`);
+    for (const stage of ['snapshot', 'local', 'pools', 'notes', 'messages', 'associations', 'routes']) {
+      performance.clearMeasures(`bpmn:graph:${stage}`);
+    }
     performance.measure('bpmn:graph:snapshot', { start, end });
     const { planGraphLayout } = await import('./graph-layout/index.js');
     if (stale?.()) return {};
-    const plan = await planGraphLayout(diagram, gaps);
+    // Verification builds enable mixed pools while production latency exceeds the target.
+    const plan = await planGraphLayout(diagram, gaps, undefined, {
+      allowMixedPools: import.meta.env.MODE === 'graph-mixed-verification'
+    });
     if (stale?.()) return {};
     if (plan.reason) {
       const scope = plan.scope ?? diagram.root;

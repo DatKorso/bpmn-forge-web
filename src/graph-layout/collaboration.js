@@ -156,7 +156,8 @@ export async function arrangeCollaboration(diagram, collaboration, structures, g
 
   timing('local', localStart);
   const poolsStart = performance.now();
-  const axis = pools[0].horizontal === false ? 'x' : 'y';
+  const verticalCount = pools.filter(({ horizontal }) => horizontal === false).length;
+  const axis = verticalCount > pools.length / 2 ? 'x' : 'y';
   const span = axis === 'x' ? 'width' : 'height';
   const row = pools.toSorted((a, b) => center(a.box, axis) - center(b.box, axis));
   const index = new Map(row.map((pool, rank) => [pool, rank]));
@@ -167,6 +168,7 @@ export async function arrangeCollaboration(diagram, collaboration, structures, g
     for (let i = Math.min(a, b); i < Math.max(a, b); i++) reserved.add(i);
   }
   const anchor = boundsOf(pools.map(({ box }) => box));
+  const gapAfter = (rank) => Math.max(reserved.has(rank) ? 80 : 0, gaps[axis]);
   let offset = 0;
   for (const [rank, pool] of row.entries()) {
     const delta = { x: anchor.x, y: anchor.y, [axis]: anchor[axis] + offset };
@@ -176,10 +178,20 @@ export async function arrangeCollaboration(diagram, collaboration, structures, g
       if (!path) return { reason: 'graphIncomplete', scope: pool, elementId: edge.id };
       state.routes.set(edge, translateWaypoints(path, delta));
     }
-    offset += state.boxes.get(pool)[span] + Math.max(reserved.has(rank) ? 80 : 0, gaps[axis]);
+    offset += state.boxes.get(pool)[span] + gapAfter(rank);
   }
   if ([...state.boxes.values()].some((box) => !validBox(box) || box.width <= 0 || box.height <= 0)) {
     return { reason: 'bounds', scope: diagram.root };
+  }
+  for (const [rank, pool] of row.entries()) {
+    const box = state.boxes.get(pool);
+    if (right(box) <= box.x || bottom(box) <= box.y) return { reason: 'bounds', scope: pool };
+    if (rank === 0) continue;
+    const previous = state.boxes.get(row[rank - 1]);
+    const gap = box[axis] - (previous[axis] + previous[span]);
+    if (center(box, axis) <= center(previous, axis) || Math.abs(gap - gapAfter(rank - 1)) >= 1e-7) {
+      return { reason: 'bounds', scope: pool };
+    }
   }
   timing('pools', poolsStart);
   const notesStart = performance.now();
@@ -192,7 +204,7 @@ export async function arrangeCollaboration(diagram, collaboration, structures, g
   if (blocked) return blocked;
 
   const routesStart = performance.now();
-  const routed = finishCollaborationRoutes(diagram, collaboration, state, obstacles);
+  const routed = finishCollaborationRoutes(diagram, collaboration, state, obstacles, axis, timing);
   timing('routes', routesStart);
   if (routed.reason) return routed;
   return { boxes: state.boxes, routes: new Map([...state.routes, ...routed.routes]),
