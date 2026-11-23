@@ -61,6 +61,25 @@ test('graph preview, atomic undo and redo, model order, and export/reopen', asyn
   await page.screenshot({ path: testInfo.outputPath('graph-result.png') });
 });
 
+test('exports the lower shortcut without a reversal and with 16 pixels of clearance', async ({ page }) => {
+  await page.goto('/');
+  await openDiagram(page, fixture('graph-layout/two-shortcuts'), 'two-shortcuts.bpmn');
+  await graphButton(page).click();
+  await applyPreview(page);
+  await expect(summary(page)).toHaveText('Выравнивание выполнено');
+
+  const download = await downloadDiagram(page);
+  const { shapes, routes } = await readDiagram(page, download);
+  const { LastTask, MiddleTask } = shapes;
+  const [start, exit, entry, end] = routes.SecondShortcut;
+  expect(routes.SecondShortcut).toHaveLength(4);
+  expect(start.y).toBe(MiddleTask.y + MiddleTask.height);
+  expect(exit).toEqual({ x: start.x, y: LastTask.y + LastTask.height + 16 });
+  expect(entry).toEqual({ x: end.x, y: exit.y });
+  await reopen(page, download);
+  await expectNoChange(page);
+});
+
 test('collaboration refusal is atomic and explains the unsupported region', async ({ page }) => {
   await page.goto('/');
   await openDiagram(page, fixture('collaboration'), 'collaboration.bpmn');

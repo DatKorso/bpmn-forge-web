@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1" targetNamespace="http://example.org/bpmn">
+  <bpmn:collaboration id="Collaboration">
+    <bpmn:participant id="Pool" processRef="Process_1" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_1" isExecutable="false">
+    <bpmn:task id="FirstTask">
+      <bpmn:incoming>SplitToFirst</bpmn:incoming>
+      <bpmn:outgoing>FirstToMiddle</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="End">
+      <bpmn:incoming>MergeToEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="StartToSplit" sourceRef="Start" targetRef="Split" />
+    <bpmn:sequenceFlow id="FirstShortcut" sourceRef="Split" targetRef="MiddleTask" />
+    <bpmn:sequenceFlow id="SplitToFirst" sourceRef="Split" targetRef="FirstTask" />
+    <bpmn:sequenceFlow id="FirstToMiddle" sourceRef="FirstTask" targetRef="MiddleTask" />
+    <bpmn:sequenceFlow id="SecondShortcut" sourceRef="MiddleTask" targetRef="Merge" />
+    <bpmn:sequenceFlow id="LastToMerge" sourceRef="LastTask" targetRef="Merge" />
+    <bpmn:sequenceFlow id="MergeToEnd" sourceRef="Merge" targetRef="End" />
+    <bpmn:exclusiveGateway id="Merge">
+      <bpmn:incoming>SecondShortcut</bpmn:incoming>
+      <bpmn:incoming>LastToMerge</bpmn:incoming>
+      <bpmn:outgoing>MergeToEnd</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="MiddleTask">
+      <bpmn:incoming>FirstShortcut</bpmn:incoming>
+      <bpmn:incoming>FirstToMiddle</bpmn:incoming>
+      <bpmn:outgoing>SecondShortcut</bpmn:outgoing>
+      <bpmn:outgoing>MiddleToLast</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="MiddleToLast" sourceRef="MiddleTask" targetRef="LastTask" />
+    <bpmn:task id="LastTask">
+      <bpmn:incoming>MiddleToLast</bpmn:incoming>
+      <bpmn:outgoing>LastToMerge</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Split">
+      <bpmn:incoming>StartToSplit</bpmn:incoming>
+      <bpmn:outgoing>FirstShortcut</bpmn:outgoing>
+      <bpmn:outgoing>SplitToFirst</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:startEvent id="Start">
+      <bpmn:outgoing>StartToSplit</bpmn:outgoing>
+    </bpmn:startEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_1">
+    <bpmndi:BPMNPlane id="Plane_1" bpmnElement="Collaboration">
+      <bpmndi:BPMNShape id="Pool_di" bpmnElement="Pool" isHorizontal="true">
+        <dc:Bounds x="460" y="180" width="600" height="250" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="FirstTask_di" bpmnElement="FirstTask">
+        <dc:Bounds x="520" y="300" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_di" bpmnElement="End">
+        <dc:Bounds x="932" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Merge_di" bpmnElement="Merge" isMarkerVisible="true">
+        <dc:Bounds x="975" y="315" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="MiddleTask_di" bpmnElement="MiddleTask">
+        <dc:Bounds x="690" y="300" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="LastTask_di" bpmnElement="LastTask">
+        <dc:Bounds x="780" y="190" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Split_di" bpmnElement="Split" isMarkerVisible="true">
+        <dc:Bounds x="695" y="205" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_di" bpmnElement="Start">
+        <dc:Bounds x="612" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="StartToSplit_di" bpmnElement="StartToSplit">
+        <di:waypoint x="648" y="230" />
+        <di:waypoint x="695" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FirstShortcut_di" bpmnElement="FirstShortcut">
+        <di:waypoint x="720" y="255" />
+        <di:waypoint x="720" y="278" />
+        <di:waypoint x="740" y="278" />
+        <di:waypoint x="740" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SplitToFirst_di" bpmnElement="SplitToFirst">
+        <di:waypoint x="720" y="255" />
+        <di:waypoint x="720" y="340" />
+        <di:waypoint x="620" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FirstToMiddle_di" bpmnElement="FirstToMiddle">
+        <di:waypoint x="620" y="340" />
+        <di:waypoint x="690" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SecondShortcut_di" bpmnElement="SecondShortcut">
+        <di:waypoint x="790" y="340" />
+        <di:waypoint x="975" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="LastToMerge_di" bpmnElement="LastToMerge">
+        <di:waypoint x="880" y="230" />
+        <di:waypoint x="1000" y="230" />
+        <di:waypoint x="1000" y="315" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MergeToEnd_di" bpmnElement="MergeToEnd">
+        <di:waypoint x="1000" y="315" />
+        <di:waypoint x="1000" y="230" />
+        <di:waypoint x="968" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MiddleToLast_di" bpmnElement="MiddleToLast">
+        <di:waypoint x="740" y="300" />
+        <di:waypoint x="740" y="285" />
+        <di:waypoint x="830" y="285" />
+        <di:waypoint x="830" y="270" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

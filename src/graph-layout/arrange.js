@@ -1,6 +1,6 @@
 import { GRID, boundsOf, ceilGrid, intersects, snap, translate } from '../layout.js';
 import { contains, moveTree, right, bottom, transpose, validBox } from '../alignment-state.js';
-import { acceptsRoute, ROUTE_MARGIN, routeFlows } from '../route-flows.js';
+import { acceptsRoute, compareCosts, ROUTE_MARGIN, routeCost, routeFlows } from '../route-flows.js';
 import { routingBounds } from '../routing-bounds.js';
 import { CONTAINER_INSET } from '../container-fit.js';
 import { isAnnotation } from '../annotation-layout.js';
@@ -9,6 +9,18 @@ import { layoutElk } from './elk.js';
 
 const dataTypes = new Set(['bpmn:DataObjectReference', 'bpmn:DataStoreReference', 'bpmn:DataObject', 'bpmn:DataStore']);
 const isData = (figure) => dataTypes.has(figure.type);
+const BYPASS_MARGIN = 16;
+
+function routeScope(flows, limits, obstacles) {
+  const route = (margin) => routeFlows(flows, limits, obstacles, [], { margin, preventReversals: true });
+  const preferred = route(BYPASS_MARGIN);
+  if (!preferred) return route(ROUTE_MARGIN);
+  const interactions = routeCost([...preferred.values()]).slice(0, 2);
+  if (interactions.every((value) => value === 0)) return preferred;
+  const fallback = route(ROUTE_MARGIN);
+  return fallback && compareCosts(routeCost([...fallback.values()]).slice(0, 2), interactions) < 0
+    ? fallback : preferred;
+}
 
 function dataContacts(edges, scope, rank) {
   const contacts = [];
@@ -165,7 +177,7 @@ export async function arrangeScope(scope, diagram, state, gaps, diagnostics, ver
     back: graph.back.has(flow) || flow.source === flow.target, vertical
   }));
   if (diagnostics) diagnostics.push({ scope, units, elk, positioned, laneBoxes, flows: routed, limits, obstacles });
-  const routes = routeFlows(routed, limits, obstacles);
+  const routes = routeScope(routed, limits, obstacles);
   if (!routes || routed.some((flow) => !acceptsRoute(routes.get(flow.id), flow, limits, obstacles))) {
     return { scope, reason: 'routing' };
   }

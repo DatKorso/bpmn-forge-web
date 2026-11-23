@@ -49,3 +49,11 @@ Two visibility concerns remain. At 1.73× the legacy area, tight pool uses an ex
 | Chromium longest main-thread task | 217 | 191, 183, 180, 179, 187 | 183 |
 
 The final warm result meets both agreed criteria. Zero of five main-thread tasks reached 200 ms, and the median to preview was 306 ms. Retain the main-thread planner and remeasure if the representative workload or planner changes.
+
+## Bypass clearance
+
+Graph routing now tries a 16 px offset for bypasses. The 8 px offset is used when the larger offset cannot route the scope or when it reduces crossings or shared length. On `invoice-approval`, the larger offset would add 64 px of shared length between `Approved` and `Late`, so the accepted routes use the smaller offset.
+
+Seven graph route fingerprints changed. Five fixtures add 16 px to total route length, and the invoice and access lifecycle workloads each save 14 px. The changed cases retain their area and bend counts. All legacy route fingerprints match the previous snapshot.
+
+The wider grid reuses the search estimates for remaining turns and distance. On the 200-node workload, the warm Node.js median was 73 ms with those estimates and 431 ms in the initial 16 px trial. The Chromium preview median was 137 ms, with zero warm runs reaching a 200 ms main-thread task.

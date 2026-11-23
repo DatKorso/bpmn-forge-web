@@ -168,6 +168,32 @@ test('routes the self loops through distinct ports on their real endpoints', asy
   }
 });
 
+test('leaves 16 pixels between a shortcut and the task it bypasses', async () => {
+  const diagram = await readFixture('acyclic-reorder.bpmn');
+  const plan = await planGraphLayout(diagram, graphGaps);
+  assert.equal(plan.reason, undefined);
+  const { x, y, width, height } = boxOf(plan, diagram.figures.find(({ id }) => id === 'B'));
+  const points = pathOf(plan, diagram.edges.find(({ id }) => id === 'SA'));
+  const index = points.findIndex((point, index) => {
+    const next = points[index + 1];
+    return next?.y === point.y && point.x <= x && next.x >= x + width;
+  });
+  assert.ok(index >= 0, 'expected a horizontal shortcut spanning task B');
+  assert.equal(Math.max(y - points[index].y, points[index].y - (y + height)), 16);
+});
+
+test('routes both shortcuts without doubling back and leaves 16 pixels around the bypassed tasks', async () => {
+  const diagram = await readFixture('graph-layout/two-shortcuts.bpmn');
+  const plan = await planGraphLayout(diagram, graphGaps);
+  assert.equal(plan.reason, undefined);
+  const first = boxOf(plan, diagram.figures.find(({ id }) => id === 'FirstTask'));
+  const last = boxOf(plan, diagram.figures.find(({ id }) => id === 'LastTask'));
+  for (const [id, y] of [['FirstShortcut', first.y - 16], ['SecondShortcut', last.y + last.height + 16]]) {
+    const points = pathOf(plan, diagram.edges.find((edge) => edge.id === id));
+    assert.deepEqual(points.slice(1, -1).map((point) => point.y), [y, y], id);
+  }
+});
+
 test('keeps same-lane main flows and an unobstructed default flow straight', async () => {
   const diagram = await readFixture('tight-pool.bpmn');
   const flow = diagram.edges.find(({ id }) => id === 'DecisionToEnd');
@@ -186,6 +212,7 @@ test('separates the invoice handoff and timer routes while preserving straight c
   const flow = (id) => pathOf(plan, diagram.edges.find((edge) => edge.id === id));
   assert.equal(plan.reason, undefined);
   assert.deepEqual(routeCost([flow('ForReview'), flow('Late')]).slice(0, 2), [0, 0]);
+  assert.deepEqual(routeCost([flow('Approved'), flow('Late')]).slice(0, 2), [0, 0]);
   for (const id of ['Reviewed', 'Pay']) assert.equal(simplifyRoute(flow(id)).length, 2);
 });
 
