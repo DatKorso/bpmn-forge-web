@@ -1,28 +1,29 @@
 import { center, intersects, nearestFreeBox } from './layout.js';
-import { cutsInterior, ROUTE_MARGIN } from './route-flows.js';
+import { cutsInterior, expandObstacle, ROUTE_MARGIN } from './route-flows.js';
 
 const REACH = 40;
 const right = (box) => box.x + box.width;
 const bottom = (box) => box.y + box.height;
 
-export function placeGatewayLabel(label, gateway, obstacles, paths, containers, strict = false) {
+export function placeGatewayLabel(label, gateway, obstacles, paths, containers, strict = false, reach = REACH) {
   const { width, height } = label;
   const searchArea = {
-    x: gateway.x - REACH - width - ROUTE_MARGIN,
-    y: gateway.y - REACH - height - ROUTE_MARGIN,
-    width: gateway.width + 2 * (REACH + width + ROUTE_MARGIN),
-    height: gateway.height + 2 * (REACH + height + ROUTE_MARGIN)
+    x: gateway.x - reach - width - ROUTE_MARGIN,
+    y: gateway.y - reach - height - ROUTE_MARGIN,
+    width: gateway.width + 2 * (reach + width + ROUTE_MARGIN),
+    height: gateway.height + 2 * (reach + height + ROUTE_MARGIN)
   };
   const boxes = [gateway, ...obstacles.filter((box) => intersects(box, label) || intersects(box, searchArea))];
   const diagonals = [];
   let blocked = boxes.some((box) => intersects(label, box)) || (strict &&
     containers.some((box) => label.x < box.x || label.y < box.y || right(label) > right(box) || bottom(label) > bottom(box)));
+  const textClearance = strict ? expandObstacle(label, ROUTE_MARGIN) : label;
   for (const points of paths) {
     for (let index = 1; index < points.length; index++) {
       const a = points[index - 1];
       const b = points[index];
       if (a.x === b.x && a.y === b.y) continue;
-      blocked ||= cutsInterior(a, b, label);
+      blocked ||= cutsInterior(a, b, textClearance);
       if (!cutsInterior(a, b, searchArea)) continue;
       if (a.x !== b.x && a.y !== b.y) diagonals.push([a, b]);
       else boxes.push({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
@@ -39,10 +40,10 @@ export function placeGatewayLabel(label, gateway, obstacles, paths, containers, 
   const across = gateway.width + 2 * width;
   const along = gateway.height + 2 * height;
   const strips = [
-    { x: gateway.x - width, y: gateway.y - REACH - height, width: across, height: REACH + height },
-    { x: gateway.x - width, y: bottom(gateway), width: across, height: REACH + height },
-    { x: right(gateway), y: gateway.y - height, width: REACH + width, height: along },
-    { x: gateway.x - REACH - width, y: gateway.y - height, width: REACH + width, height: along }
+    { x: gateway.x - width, y: gateway.y - reach - height, width: across, height: reach + height },
+    { x: gateway.x - width, y: bottom(gateway), width: across, height: reach + height },
+    { x: right(gateway), y: gateway.y - height, width: reach + width, height: along },
+    { x: gateway.x - reach - width, y: gateway.y - height, width: reach + width, height: along }
   ];
   let best = strict ? null : label;
   let cost = Infinity;
@@ -57,6 +58,7 @@ export function placeGatewayLabel(label, gateway, obstacles, paths, containers, 
       limits.height = endY - limits.y;
     }
     const candidate = nearestFreeBox(label, boxes, limits, ROUTE_MARGIN, diagonals);
+    if (strict && side === preferredSide && candidate) return candidate;
     if (candidate && distance(candidate) < cost - 1e-7) {
       best = candidate;
       cost = distance(candidate);

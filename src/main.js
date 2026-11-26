@@ -9,6 +9,7 @@ import autoAlign from './auto-align.js';
 import { getUndoAction } from './bpmn-internals.js';
 import { clearAlignmentStatus, reportAlignment, reportOperation, reportOperationError, resetAlignment, setAlignmentPending } from './footer.js';
 import keyboardPalette from './keyboard-palette.js';
+import linkedAnnotationMove from './linked-annotation-move.js';
 import { protectConditionalFlows, renderProperties } from './properties.js';
 import russian from './russian.js';
 import { confirmAlignment, reportGapValidity, updateToolTooltip } from './toolbar.js';
@@ -125,7 +126,7 @@ async function loadDiagram(readXML, nextFilename, message, operation = 'new') {
   let next;
   try {
     // Keep the live model and its history until the new XML has rendered successfully.
-    next = new Modeler({ container: host, additionalModules: [autoAlign, russian, colorPicker, keyboardPalette] });
+    next = new Modeler({ container: host, additionalModules: [autoAlign, russian, colorPicker, keyboardPalette, linkedAnnotationMove] });
     protectConditionalFlows(next);
     keepFractionalBounds(next);
     const { warnings } = await next.importXML(await readXML());
@@ -427,7 +428,10 @@ async function alignDiagram(button, trigger) {
       reportAlignment(staleResult);
       return;
     }
-    if (plan.apply) {
+    if (plan.blockedPreview) {
+      previewOpened = true;
+      await confirmAlignment(plan);
+    } else if (plan.apply) {
       const confirmed = confirmAlignment(plan);
       previewOpened = true;
       if (!await confirmed) return;

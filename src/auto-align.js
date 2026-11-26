@@ -28,6 +28,7 @@ const SKIP_REASONS = {
   graphMessageEndpoint: 'Конец потока сообщений не поддерживается или не принадлежит другому пулу',
   graphDataScope: 'Связь данных выходит за пределы поддерживаемой области',
   graphAssociationEndpoint: 'Ассоциация должна соединять две видимые фигуры',
+  graphSequenceClearance: 'Не удалось провести поток последовательности с зазором 8 px',
   graphMessageRouting: 'Не удалось проложить поток сообщений',
   graphAssociationRouting: 'Не удалось проложить ассоциацию',
   graphConnectionLabel: 'Не удалось разместить подпись связи без наложений',
@@ -41,6 +42,7 @@ const SKIP_HINTS = {
   poolStability: 'Разнесите перекрывающиеся пулы и повторите выравнивание.',
   poolRouting: 'Освободите место между пулами для потоков сообщений.',
   routing: 'Освободите проход между фигурами или увеличьте отступы.',
+  graphSequenceClearance: 'Освободите проход между фигурами или увеличьте отступы.',
   graphMixedOrientation: 'Для этой схемы доступна кнопка «Выровнять схему».',
   graphLaneOrientation: 'Согласуйте isHorizontal дорожки с пулом. Для вертикальной дорожки укажите false.',
   graphNoPools: 'Проверьте BPMN DI участников.',
@@ -141,44 +143,36 @@ function sameWaypoints(a, b) {
 
 function gatewayLabelBounds(groups) {
   const bounds = new Map();
-  for (const { diagram, gateways, stabilize } of groups) {
+  for (const { diagram, gateways } of groups) {
     if (!gateways.length) continue;
     const { figures } = diagram;
     const connections = figures.flatMap(({ element }) => element.outgoing.filter((edge) => !edge.hidden));
     const paths = connections.map(({ waypoints }) => waypoints);
     const labels = [...figures.map(({ element }) => element), ...connections]
       .flatMap(({ labels }) => labels.filter((label) => !label.hidden));
-    const ordered = stabilize ? gateways : gateways.toSorted((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-    // A later label can free space for a label that could not move on the first pass.
-    for (let pass = 0; pass < (stabilize ? labels.length : 1); pass++) {
-      let changed = false;
-      for (const gateway of ordered) {
-        const visible = gateway.element.labels.filter((label) => !label.hidden);
-        if (!visible.length) continue;
-        const containers = new Set();
-        for (let figure = gateway; figure; figure = figure.parent) {
-          if (isFrame(figure)) containers.add(figure);
-          for (let lane = figure.lane; lane?.kind === 'lane'; lane = lane.parent) containers.add(lane);
-        }
-        const obstacles = figures.filter((figure) => figure !== gateway && figure.kind !== 'group')
-          .flatMap((figure) => {
-            const box = getBounds(figure.element);
-            if (!containers.has(figure)) return [box];
-            if (!figure.header) return [];
-            return [figure.horizontal === false ? { ...box, height: figure.header } : { ...box, width: figure.header }];
-          });
-        for (const label of visible) {
-          const before = bounds.get(label) ?? getBounds(label);
-          const after = placeGatewayLabel(before, getBounds(gateway.element), [
-            ...obstacles, ...labels.filter((other) => other !== label).map((other) => bounds.get(other) ?? getBounds(other))
-          ], paths, [...containers].map(({ element }) => getBounds(element)));
-          if (after !== before) {
-            bounds.set(label, after);
-            changed = true;
-          }
-        }
+    const ordered = gateways.toSorted((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    for (const gateway of ordered) {
+      const visible = gateway.element.labels.filter((label) => !label.hidden);
+      if (!visible.length) continue;
+      const containers = new Set();
+      for (let figure = gateway; figure; figure = figure.parent) {
+        if (isFrame(figure)) containers.add(figure);
+        for (let lane = figure.lane; lane?.kind === 'lane'; lane = lane.parent) containers.add(lane);
       }
-      if (!changed) break;
+      const obstacles = figures.filter((figure) => figure !== gateway && figure.kind !== 'group')
+        .flatMap((figure) => {
+          const box = getBounds(figure.element);
+          if (!containers.has(figure)) return [box];
+          if (!figure.header) return [];
+          return [figure.horizontal === false ? { ...box, height: figure.header } : { ...box, width: figure.header }];
+        });
+      for (const label of visible) {
+        const before = bounds.get(label) ?? getBounds(label);
+        const after = placeGatewayLabel(before, getBounds(gateway.element), [
+          ...obstacles, ...labels.filter((other) => other !== label).map((other) => bounds.get(other) ?? getBounds(other))
+        ], paths, [...containers].map(({ element }) => getBounds(element)));
+        if (after !== before) bounds.set(label, after);
+      }
     }
   }
   return bounds;
@@ -399,7 +393,10 @@ class AutoAlign {
       const scope = plan.scope ?? diagram.root;
       const subject = plan.elementId ? ` (${plan.elementId})` : '';
       const hint = SKIP_HINTS[plan.reason] ?? '';
-      return { reason: `${regionName(scope)}${subject} — ${SKIP_REASONS[plan.reason] ?? SKIP_REASONS.routing}. ${hint}`.trim() };
+      return {
+        reason: `${regionName(scope)}${subject} — ${SKIP_REASONS[plan.reason] ?? SKIP_REASONS.routing}. ${hint}`.trim(),
+        blockedPreview: ['graphSequenceClearance', 'graphGatewayLabel'].includes(plan.reason)
+      };
     }
     return this.prepareDiagramPlans([{ diagram, plan }], true);
   }
@@ -418,7 +415,7 @@ class AutoAlign {
 
     for (const { diagram, plan } of plans) {
       if (plan.reason) return { reason: SKIP_REASONS[plan.reason] };
-      labelGroups.push({ diagram, gateways: plan.labelGateways, stabilize: graph });
+      if (plan.labelGateways.length) labelGroups.push({ diagram, gateways: plan.labelGateways });
       for (const [figure, next] of plan.boxes) {
         const { element, box, kind } = figure;
         bounds.set(element, next);
@@ -447,7 +444,8 @@ class AutoAlign {
         for (const [index, box] of boxes.entries()) {
           const label = labels[index];
           const changed = !sameBox(label, box);
-          const missing = !getDi(owner).label?.bounds && (bounds.has(owner) || routes.has(owner));
+          const missing = !getDi(owner).label?.bounds &&
+            (bounds.has(owner) || routes.has(owner) || graph && is(owner, 'bpmn:Gateway'));
           if (changed || missing) explicitLabels.set(label, box);
         }
       }

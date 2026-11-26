@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { planAlignment } from '../src/alignment-plan.js';
 import { planGraphLayout } from '../src/graph-layout/index.js';
 import { boundsOf, intersects, translate } from '../src/layout.js';
-import { routeCost, simplifyRoute } from '../src/route-flows.js';
+import { ROUTE_MARGIN, routeCost, simplifyRoute } from '../src/route-flows.js';
 import { readDiagram, readFixture } from '../test/helpers/read-fixture.js';
 import { graphWorkloads, graphWorkloadXml } from '../test/helpers/graph-quality-workloads.js';
 import { straightExceptions, straightFlows } from '../test/helpers/graph-straight-flows.js';
@@ -128,7 +128,7 @@ for (const [name, load] of fixtures) {
     hard.push({ name, reason: graph.reason });
   }
   const legacyMetrics = measure(diagram, legacy, stages);
-  const final = graph.reason ? null : measure(diagram, graph, stages);
+  const final = graph.reason ? null : measure(diagram, graph, stages, ROUTE_MARGIN);
   const shared = graph.reason ? [] : sharedSegments(diagram, graph);
   cases[name] = { nodes: diagram.figures.filter(({ kind }) => kind === 'node').length,
     reason: graph.reason ?? null, legacy: legacyMetrics, final, shared,
@@ -197,7 +197,7 @@ for (const [name, load] of fixtures) {
         } catch {
           hard.push({ name, amount, seed, r6: 'Geometry or route changed' });
         }
-        const metrics = measure(input, next, diagnostics);
+        const metrics = measure(input, next, diagnostics, ROUTE_MARGIN);
         const invalid = Object.fromEntries(['r1', 'r2', 'r3', 'r4'].filter((key) => metrics[key].length)
           .map((key) => [key, metrics[key]]));
         if (Object.keys(invalid).length) hard.push({ name, amount, seed, ...invalid });

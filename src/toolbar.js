@@ -102,12 +102,14 @@ export function reportGapValidity(selector = 'input:invalid') {
 const alignmentPreview = document.getElementById('alignment-preview');
 const previewSummary = document.getElementById('alignment-preview-summary');
 
-export function confirmAlignment({ moved, resized, rerouted, movedLabels, skipped }) {
+export function confirmAlignment({ moved, resized, rerouted, movedLabels, skipped, reason }) {
+  alignmentPreview.querySelector('[value="apply"]').hidden = Boolean(reason);
+  alignmentPreview.querySelector('[value="cancel"]').textContent = reason ? 'Закрыть' : 'Отмена';
   const counts = [`Переместится фигур: ${moved}.`, `Изменится размер контейнеров: ${resized}.`];
   if (rerouted) counts.push(`Обновится связей: ${rerouted}.`);
   if (movedLabels) counts.push(`Переместится подписей: ${movedLabels}.`);
   if (skipped?.length) counts.push(`Будет пропущено участков: ${skipped.length}.`);
-  previewSummary.textContent = counts.join(' ');
+  previewSummary.textContent = reason ?? counts.join(' ');
   alignmentPreview.returnValue = 'cancel';
   alignmentPreview.showModal();
   return new Promise((resolve) => {

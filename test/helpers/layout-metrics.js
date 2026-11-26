@@ -1,3 +1,4 @@
+import { routingBox } from '../../src/graph-layout/support.js';
 import { boundsOf, intersects } from '../../src/layout.js';
 import { contains } from '../../src/alignment-state.js';
 import { acceptsRoute, routeCost, simplifyRoute } from '../../src/route-flows.js';
@@ -53,11 +54,12 @@ export function perturb(diagram, amount, seed) {
 
 const unlimited = { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity };
 
-export function measure(diagram, plan, diagnostics = []) {
+export function measure(diagram, plan, diagnostics = [], clearance = 0) {
   const figures = processFigures(diagram).filter((figure) => figure.kind !== 'group');
   const solids = figures.filter((figure) => !['pool', 'lane'].includes(figure.kind));
   const placed = (figure) => boxOf(plan, figure);
   const route = (edge) => pathOf(plan, edge);
+  const routingBoxes = new Map(solids.map((figure) => [figure, clearance ? routingBox(figure, placed(figure)) : placed(figure)]));
   const local = new Map(diagnostics.flatMap(({ flows }) => flows.map((flow) => [flow.edge, flow])));
   const r1 = solids.flatMap((figure, index) => solids.slice(index + 1)
     .filter((other) => figure.scope === other.scope && figure.host !== other && other.host !== figure &&
@@ -75,10 +77,11 @@ export function measure(diagram, plan, diagnostics = []) {
     const { source, target } = edge;
     const vertical = local.get(edge)?.vertical ?? source.scope.horizontal === false;
     const axis = vertical ? 'y' : 'x';
-    const flow = { source: placed(source), target: placed(target) };
+    const flow = { source: routingBoxes.get(source), target: routingBoxes.get(target),
+      sourceHost: routingBoxes.get(source.host), targetHost: routingBoxes.get(target.host) };
     const points = route(edge);
-    const obstacles = solids.filter((figure) => figure.scope === source.scope).map(placed);
-    if (!acceptsRoute(points, flow, unlimited, obstacles)) r3.push(edge.id);
+    const obstacles = solids.filter((figure) => figure.scope === source.scope).map((figure) => routingBoxes.get(figure));
+    if (!acceptsRoute(points, flow, unlimited, obstacles, clearance)) r3.push(edge.id);
     if (!local.get(edge)?.back && (source.host ?? source) !== (target.host ?? target)) {
       const span = vertical ? 'height' : 'width';
       if (flow.source[axis] + flow.source[span] > flow.target[axis]) r4.push(edge.id);

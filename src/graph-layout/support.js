@@ -1,3 +1,4 @@
+import { center } from '../layout.js';
 import { modelOf, modelOrder, processOf, typeIs } from './model-order.js';
 
 const failure = (reason, scope, model) => ({ reason, scope, elementId: model?.id });
@@ -5,6 +6,12 @@ const isShape = (di) => typeIs(di, 'bpmndi:BPMNShape');
 const isEdge = (di) => typeIs(di, 'bpmndi:BPMNEdge');
 const isData = (model) => typeIs(model, 'bpmn:DataAssociation');
 const finitePoint = ({ x, y }) => Number.isFinite(x) && Number.isFinite(y);
+
+export function routingBox(figure, box) {
+  // The editor draws events using the DI width as the diameter.
+  return box.width !== box.height && typeIs(modelOf(figure), 'bpmn:Event')
+    ? { ...box, y: center(box, 'y') - box.width / 2, height: box.width } : box;
+}
 
 function endpoints(model) {
   if (typeIs(model, 'bpmn:DataInputAssociation')) return [model.sourceRef?.[0], model.$parent];

@@ -1,4 +1,4 @@
-import { boundsOf, ceilGrid, intersects } from './layout.js';
+import { ceilGrid, intersects } from './layout.js';
 import { ROUTE_MARGIN } from './route-flows.js';
 import { collaboration, placePools, routeMessages } from './pool-layout.js';
 import { isAnnotation, isFrame, obstructedFlows, placeAnnotations, routeAssociations } from './annotation-layout.js';
@@ -140,34 +140,4 @@ export function finishAnnotations(diagram, planned, initial, messageFlows, gaps,
     state.routes = new Map([...state.routes, ...routes, ...messages]);
   }
   return null;
-}
-
-// Graph layout fixes the process geometry before placing notes and associations.
-export function finishFixedAnnotations(diagram, planned) {
-  const { notes } = diagram;
-  if (!notes.annotations.length && !notes.associations.length) return planned;
-  const state = clone(planned);
-  const containers = new Map();
-  for (const figure of notes.figures) {
-    const parents = [];
-    for (let parent = figure.parent; parent; parent = parent.parent) {
-      if (isFrame(parent)) parents.push(parent);
-    }
-    containers.set(figure, parents);
-  }
-  const layout = { ...notes, containers };
-  const bounds = (figure) => state.boxes.get(figure);
-  const solids = notes.figures.filter((figure) => !isAnnotation(figure));
-  const preferred = (note) => {
-    const [anchor] = notes.anchors.get(note);
-    const frame = containers.get(note)[0];
-    const area = anchor ? bounds(anchor) : frame ? bounds(frame) :
-      solids.length ? boundsOf(solids.map(bounds)) : { x: 0, y: 0 };
-    return { ...note.box, x: area.x, y: area.y - note.box.height - ROUTE_MARGIN };
-  };
-  if (placeAnnotations(layout, state, diagram.edges, new Set(notes.annotations), preferred) ||
-      obstructedFlows(layout, state, diagram.edges).length ||
-      !routeAssociations(layout, state, new Set(), true) ||
-      [...state.boxes.values()].some((box) => !validBox(box))) return null;
-  return state;
 }

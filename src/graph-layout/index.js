@@ -1,10 +1,11 @@
 import { boundsOf, snap, translate, translateWaypoints } from '../layout.js';
-import { changes, indexDiagram, sameBox, validBox } from '../alignment-state.js';
-import { finishFixedAnnotations } from '../finish-annotations.js';
+import { changes, indexDiagram, validBox } from '../alignment-state.js';
 import { isAnnotation } from '../annotation-layout.js';
 import { arrangeScope, captureStructure } from './arrange.js';
 import { arrangeCollaboration, isDataFlow, isPassivePool, localizePassivePool } from './collaboration.js';
-import { modelOf } from './model-order.js';
+import { modelOf, processOf } from './model-order.js';
+import { fixedLabels, placeNotes } from './decorations.js';
+import { finishCollaborationRoutes } from './collaboration-routes.js';
 import { inspectCollaboration, unsupportedGraph } from './support.js';
 
 function recordGraphTiming(stage, start) {
@@ -14,6 +15,21 @@ function recordGraphTiming(stage, start) {
 }
 
 export async function planGraphLayout(diagram, gaps, diagnostics, { allowMixedPools = true } = {}) {
+  const room = new Map();
+  let stages = diagnostics && [];
+  let plan = await planDiagram(diagram, gaps, stages, allowMixedPools, room);
+  while (plan.reason === 'graphGatewayLabel' && !room.has(plan.scope)) {
+    room.set(plan.scope, 48);
+    stages = diagnostics && [];
+    const retry = await planDiagram(diagram, gaps, stages, allowMixedPools, room);
+    if (retry.reason && retry.reason !== 'graphGatewayLabel') break;
+    plan = retry;
+  }
+  if (stages) diagnostics.push(...stages);
+  return plan;
+}
+
+async function planDiagram(diagram, gaps, diagnostics, allowMixedPools, room) {
   const failure = (reason, scope = diagram.root, elementId) =>
     ({ boxes: new Map(), routes: new Map(), labelGateways: [], skipped: [], reason, scope, elementId });
   const collaboration = inspectCollaboration(diagram);
@@ -26,7 +42,7 @@ export async function planGraphLayout(diagram, gaps, diagnostics, { allowMixedPo
   const structures = new Map([diagram.root, ...diagram.figures.filter(({ expanded, kind }) => expanded || kind === 'pool')]
     .map((scope) => [scope, captureStructure(scope)]));
   if (collaboration?.extended) {
-    const arranged = await arrangeCollaboration(diagram, collaboration, structures, gaps, diagnostics, recordGraphTiming);
+    const arranged = await arrangeCollaboration(diagram, collaboration, structures, gaps, diagnostics, recordGraphTiming, room);
     if (arranged.reason) return failure(arranged.reason, arranged.scope, arranged.elementId);
     return { ...plannedChanges(arranged), labels: arranged.labels, labelGateways: [], skipped: [],
       diagnostics: collaboration.diagnostics };
@@ -39,16 +55,15 @@ export async function planGraphLayout(diagram, gaps, diagnostics, { allowMixedPo
     ...indexDiagram(diagram.figures, diagram.edges, auxiliary.filter((edge) => !isDataFlow(edge))),
     data: auxiliary.filter(isDataFlow),
     structures,
-    labelGateways: [],
     sequenceByModel: new Map(diagram.edges.map((edge) => [modelOf(edge), edge]))
   };
-  const state = { boxes: new Map(diagram.figures.map((figure) => [figure, figure.box])), routes: new Map() };
+  const state = { boxes: new Map(diagram.figures.map((figure) => [figure, figure.box])), routes: new Map(), routing: new Map(), room };
   const localStart = performance.now();
   const passive = pool && isPassivePool(diagram.figures, structures.get(pool));
   if (passive) localizePassivePool(pool, diagram.figures, state);
   const result = passive ? undefined : await arrangeScope(scope, indexed, state, gaps, diagnostics);
   recordGraphTiming('local', localStart);
-  if (result) return failure(result.reason, result.scope);
+  if (result) return failure(result.reason, result.scope, result.elementId);
   if (diagram.edges.some((edge) => !state.routes.has(edge)) ||
       diagram.figures.some((figure) => !isAnnotation(figure) && state.boxes.get(figure) === figure.box)) {
     return failure('graphIncomplete', scope);
@@ -64,13 +79,30 @@ export async function planGraphLayout(diagram, gaps, diagnostics, { allowMixedPo
   }
   if (![...state.boxes.values()].every(validBox)) return failure('bounds', scope);
   const notesStart = performance.now();
-  const finished = finishFixedAnnotations(indexed, state);
+  const order = new Map();
+  function visit(model) {
+    order.set(model, order.size);
+    for (const member of [...model.flowElements ?? [], ...model.artifacts ?? []]) visit(member);
+  }
+  visit(processOf(scope));
+  if (pool) visit(modelOf(diagram.root));
+  const modelRank = (figure) => order.get(modelOf(figure)) ?? Infinity;
+  const figures = diagram.figures.toSorted((a, b) => modelRank(a) - modelRank(b));
+  const context = {
+    owner: collaboration?.owner ?? new Map(), messages: [], auxiliary,
+    order: new Map(figures.map((figure, index) => [figure, index]))
+  };
+  const fixed = fixedLabels(figures.filter((figure) => !isAnnotation(figure)), state);
+  if (fixed.reason) return failure(fixed.reason, fixed.scope, fixed.elementId);
+  const blocked = placeNotes(diagram, context, state, figures, fixed.obstacles);
   recordGraphTiming('notes', notesStart);
-  if (!finished || members.some((figure) => !sameBox(state.boxes.get(figure), finished.boxes.get(figure))) ||
-      diagram.edges.some((edge) => state.routes.get(edge) !== finished.routes.get(edge))) return failure('annotations', scope);
+  if (blocked) return failure(blocked.reason, blocked.scope, blocked.elementId);
+  const routed = finishCollaborationRoutes(diagram, context, state, fixed.obstacles);
+  if (routed.reason) return failure(routed.reason, routed.scope, routed.elementId);
   return {
-    ...plannedChanges(finished),
-    labelGateways: indexed.labelGateways,
+    ...plannedChanges({ boxes: state.boxes, routes: new Map([...state.routes, ...routed.routes]) }),
+    labels: new Map([...fixed.labels, ...routed.labels]),
+    labelGateways: [],
     skipped: [],
     diagnostics: collaboration?.diagnostics ?? []
   };

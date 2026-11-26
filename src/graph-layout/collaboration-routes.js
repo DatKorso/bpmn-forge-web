@@ -2,6 +2,7 @@ import { boundsOf, center, nearestFreeBox } from '../layout.js';
 import { bottom, contains, right, validBox } from '../alignment-state.js';
 import { acceptsRoute, cutsInterior, ROUTE_MARGIN, routeCost, routeFlow } from '../route-flows.js';
 import { modelOf, typeIs } from './model-order.js';
+import { routingBox } from './support.js';
 
 const segments = (points) => points.slice(1).map((point, index) => [points[index], point]);
 const middle = (box) => ({ x: center(box, 'x'), y: center(box, 'y') });
@@ -27,14 +28,6 @@ function headerBox(figure, box) {
 function withClearance(box) {
   return { x: box.x - ROUTE_MARGIN, y: box.y - ROUTE_MARGIN,
     width: box.width + ROUTE_MARGIN * 2, height: box.height + ROUTE_MARGIN * 2 };
-}
-
-function dockBox(figure, box) {
-  // bpmn-js draws events as circles using width as the diameter and the DI midpoint as center.
-  if (typeIs(modelOf(figure), 'bpmn:Event')) {
-    return { ...box, y: center(box, 'y') - box.width / 2, height: box.width };
-  }
-  return box;
 }
 
 function ports(figure, box, other, inward) {
@@ -100,8 +93,8 @@ function routingGeometry(figures, boxes, edge, fixedLabels, area, chains) {
   const enclosing = new Set([...sourceChain, ...targetChain]);
   const exiting = sourceChain.filter((frame) => !targetChain.includes(frame)).map((frame) => boxes.get(frame));
   const entering = targetChain.filter((frame) => !sourceChain.includes(frame)).reverse().map((frame) => boxes.get(frame));
-  const source = dockBox(edge.source, boxes.get(edge.source));
-  const target = dockBox(edge.target, boxes.get(edge.target));
+  const source = routingBox(edge.source, boxes.get(edge.source));
+  const target = routingBox(edge.target, boxes.get(edge.target));
   const limit = shared ? boxes.get(shared) : area;
   if (!exiting.every((frame) => contains(frame, source)) || !entering.every((frame) => contains(frame, target)) ||
       !contains(limit, source) || !contains(limit, target)) return null;
@@ -123,7 +116,7 @@ function routingGeometry(figures, boxes, edge, fixedLabels, area, chains) {
     } else if (enclosing.has(figure) || figure.kind === 'lane') {
       if (figure.header) obstacles.push(withClearance(headerBox(figure, box)));
     } else {
-      obstacles.push(withClearance(dockBox(figure, box)));
+      obstacles.push(withClearance(routingBox(figure, box)));
     }
   }
 
@@ -200,7 +193,7 @@ function labelObstacles(figures, boxes) {
         { ...box, height: 0 }, { ...box, y: bottom(box), height: 0 }
       );
       if (figure.header) obstacles.push(headerBox(figure, box));
-    } else obstacles.push(dockBox(figure, box));
+    } else obstacles.push(routingBox(figure, box));
   }
   return obstacles;
 }
