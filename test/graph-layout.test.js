@@ -322,6 +322,7 @@ test('preserves offsets for reversed associations and finds the nearest free not
   const [link] = diagram.auxiliary;
   const { source: task, target: note } = link;
   [link.source, link.target] = [note, task];
+  note.box = { ...note.box, y: task.box.y - note.box.height - 5 };
   const plan = await planGraphLayout(diagram, graphGaps);
   assert.equal(plan.reason, undefined);
   assert.deepEqual(
@@ -334,7 +335,7 @@ test('preserves offsets for reversed associations and finds the nearest free not
     y: task.box.y + boxOf(plan, nextTask).y - boxOf(plan, task).y + 5 };
   const displaced = await planGraphLayout(diagram, graphGaps);
   assert.equal(displaced.reason, undefined);
-  assert.equal(boxOf(displaced, note).x, boxOf(displaced, nextTask).x + nextTask.box.width + 8);
+  assert.equal(boxOf(displaced, note).x, boxOf(displaced, nextTask).x + nextTask.box.width);
   assert.equal(boxOf(displaced, note).y, boxOf(displaced, nextTask).y + 5);
   apply(diagram, displaced);
   const repeat = await planGraphLayout(diagram, graphGaps);

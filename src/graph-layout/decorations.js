@@ -94,16 +94,11 @@ export function placeNotes(diagram, collaboration, state, figures, labels) {
     if (anchors.has(source) && !anchors.has(target)) anchors.get(source).add(target);
     if (anchors.has(target) && !anchors.has(source)) anchors.get(target).add(source);
   }
-  const lines = [];
-  const diagonals = [];
-  for (const path of state.routes.values()) {
-    for (const [index, b] of path.slice(1).entries()) {
-      const a = path[index];
-      if (a.x !== b.x && a.y !== b.y) diagonals.push([a, b]);
-      else lines.push({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
-        width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) });
-    }
-  }
+  const lines = [...state.routes.values()].flatMap((path) => path.slice(1).map((b, index) => {
+    const a = path[index];
+    return expandObstacle({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+      width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) }, ROUTE_MARGIN);
+  }));
   const placed = [];
   for (const note of notes) {
     const containers = ancestry(note);
@@ -125,7 +120,7 @@ export function placeNotes(diagram, collaboration, state, figures, labels) {
       return figure.header ? [headerBox(figure, box)] : [];
     });
     const limit = frame && state.boxes.get(frame);
-    const next = nearestFreeBox(preferred, [...obstacles, ...labels, ...lines, ...placed], limit, ROUTE_MARGIN, diagonals);
+    const next = nearestFreeBox(preferred, [...obstacles, ...labels, ...lines, ...placed], limit, 0);
     if (!next || !validBox(next)) return { reason: 'annotations', scope: frame ?? diagram.root, elementId: note.id };
     state.boxes.set(note, next);
     placed.push(next);
