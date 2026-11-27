@@ -5,6 +5,7 @@ import { routingBounds } from '../routing-bounds.js';
 import { CONTAINER_INSET } from '../container-fit.js';
 import { isAnnotation } from '../annotation-layout.js';
 import { keyAt, modelOf, modelOrder, orderGraph, typeIs } from './model-order.js';
+import { readLaneTree } from './lane-tree.js';
 import { layoutElk } from './elk.js';
 import { routingBox } from './support.js';
 
@@ -77,21 +78,33 @@ function unitParts(figure, state, attachments, downstreamEvents, toLocal) {
   return parts;
 }
 
-export function packRows(units, lanes, geometry, header, spacing, expanded, vertical = false, room = 0) {
+export function packRows(units, children, geometry, header, spacing, expanded, vertical = false, room = 0) {
   const inset = CONTAINER_INSET + room;
   const crossInset = inset + (expanded && !vertical ? 20 : 0);
   const title = expanded && vertical ? 20 : 0;
-  const dx = ceilGrid(header + (lanes.length ? lanes[0].header : 0) + inset + title);
+  const headerEnds = new Map();
+  let deepestHeader = header;
+  function measureHeaders(parent, x) {
+    for (const lane of children.get(parent) ?? []) {
+      const end = x + lane.header;
+      headerEnds.set(lane, end);
+      deepestHeader = Math.max(deepestHeader, end);
+      measureHeaders(lane, end);
+    }
+  }
+  measureHeaders(undefined, header);
+  const dx = ceilGrid(deepestHeader + inset + title);
   const positioned = new Map();
   const laneBoxes = new Map();
+  const bands = new Map();
   const groups = Map.groupBy([...units], ([, unit]) => unit.lane);
-  const bands = groups.has(undefined) || !lanes.length ? [...lanes, undefined] : lanes;
-  let cursor = lanes.length ? 0 : crossInset;
+  const hasLanes = children.get(undefined).length > 0;
+  let cursor = hasLanes ? 0 : crossInset;
   let maxX = dx;
-  for (const lane of bands) {
+  function packBand(lane, x) {
     const members = groups.get(lane) ?? [];
     const minY = Math.min(...members.map(([, { key }]) => geometry.get(key).y), Infinity);
-    const dy = members.length ? ceilGrid(cursor + (lanes.length ? crossInset : 0) - minY + GRID / 2) : 0;
+    const dy = members.length ? ceilGrid(cursor + (hasLanes ? crossInset : 0) - minY + GRID / 2) : 0;
     let maxY = cursor + crossInset;
     for (const [figure, { key, parts }] of members) {
       const origin = geometry.get(key);
@@ -108,24 +121,30 @@ export function packRows(units, lanes, geometry, header, spacing, expanded, vert
         maxY = Math.max(maxY, bottom(placed));
       }
     }
-    if (lane) {
-      const height = ceilGrid(maxY + Math.max(crossInset, spacing.y / 2)) - cursor;
-      laneBoxes.set(lane, { x: header, y: cursor, width: 0, height });
-      cursor += height;
-    } else {
-      cursor = ceilGrid(maxY + inset);
+    const end = ceilGrid(maxY + (lane ? Math.max(crossInset, spacing.y / 2) : inset));
+    if (lane) bands.set(lane, { x, y: cursor, width: 0, height: end - cursor });
+    cursor = end;
+  }
+  function packLanes(parent, x) {
+    for (const lane of children.get(parent) ?? []) {
+      const y = cursor;
+      const childX = headerEnds.get(lane);
+      if (groups.has(lane) || !children.get(lane)?.length) packBand(lane, x);
+      packLanes(lane, childX);
+      laneBoxes.set(lane, { x, y, width: 0, height: cursor - y });
     }
   }
+  packLanes(undefined, header);
+  if (groups.has(undefined) || !hasLanes) packBand(undefined, 0);
   const width = ceilGrid(maxX + inset);
-  for (const box of laneBoxes.values()) box.width = width - header;
-  return { positioned, laneBoxes, frame: { x: 0, y: 0, width, height: cursor } };
+  for (const box of [...laneBoxes.values(), ...bands.values()]) box.width = width - box.x;
+  return { positioned, laneBoxes, bands, frame: { x: 0, y: 0, width, height: cursor } };
 }
 
 export function captureStructure(scope) {
-  const { nodes, edges, lanes } = modelOrder(scope);
+  const { nodes, edges } = modelOrder(scope);
   return {
-    nodes, edges, lanes,
-    laneMembers: new Map(lanes.map((lane) => [lane, [...(lane.flowNodeRef ?? [])]])),
+    nodes, edges, laneTree: readLaneTree(scope, nodes),
     defaults: new Set(edges.filter((edge) => edge.sourceRef?.default === edge)),
     downstreamEvents: new Set(edges
       .filter(({ sourceRef, targetRef }) => sourceRef?.attachedToRef &&
@@ -135,17 +154,11 @@ export function captureStructure(scope) {
 }
 
 export async function arrangeScope(scope, diagram, state, gaps, diagnostics, vertical = scope.horizontal === false) {
-  const { nodes, edges, lanes: modelLanes, laneMembers, defaults, downstreamEvents } = diagram.structures.get(scope);
+  const { nodes, edges, laneTree, defaults, downstreamEvents } = diagram.structures.get(scope);
   const figures = diagram.scopes.get(scope) ?? [];
   const byModel = new Map(figures.map((figure) => [modelOf(figure), figure]));
-  const lanes = modelLanes.map((model) => byModel.get(model));
-  const memberLanes = new Map();
-  for (const model of modelLanes) {
-    for (const member of laneMembers.get(model)) {
-      if (!memberLanes.has(member)) memberLanes.set(member, byModel.get(model));
-    }
-  }
-  const laneOf = (figure) => memberLanes.get(modelOf(figure));
+  const lanes = laneTree.lanes.map((model) => byModel.get(model));
+  const laneOf = (figure) => byModel.get(laneTree.memberships.get(modelOf(figure)));
   const units = new Map();
   const members = nodes.map((model) => byModel.get(model)).filter(Boolean);
   const memberSet = new Set(members);
@@ -183,6 +196,8 @@ export async function arrangeScope(scope, diagram, state, gaps, diagnostics, ver
   }
   if (!units.size && !lanes.length && scope.kind === 'root') return;
   const dataEdges = contacts.map(([source, target], index) => ({ source, target, id: `d${keyAt(index)}` }));
+  const children = new Map([...laneTree.children].map(([parent, models]) =>
+    [byModel.get(parent), models.map((model) => byModel.get(model))]));
   const laneRanks = new Map(lanes.map((lane, index) => [lane, index]));
   const laneRank = (figure) => laneRanks.get(units.get(figure).lane) ?? lanes.length;
   const graph = orderGraph([...units.keys()], flows, dataEdges, laneRank);
@@ -191,7 +206,7 @@ export async function arrangeScope(scope, diagram, state, gaps, diagnostics, ver
     const actualSpacing = widen ? { x: spacing.x + room, y: spacing.y + room } : spacing;
     const elk = await layoutElk(graph, units, actualSpacing, vertical);
     const geometry = new Map(elk.children?.map(({ id, ...box }) => [id, toLocal(box)]));
-    const { positioned, laneBoxes, frame } = packRows(units, lanes, geometry, scope.header ?? 0,
+    const { positioned, laneBoxes, bands, frame } = packRows(units, children, geometry, scope.header ?? 0,
       actualSpacing, scope.expanded, vertical, room);
     if (![frame, ...positioned.values(), ...laneBoxes.values()].every(validBox)) return { reason: 'bounds' };
     const boxes = new Map([...positioned].map(([figure, box]) => [figure, routingBox(figure, toLocal(box))]));
@@ -206,14 +221,14 @@ export async function arrangeScope(scope, diagram, state, gaps, diagnostics, ver
     const routes = routeScope(routed, limits, obstacles, [], ({ edge }) => { failedFlow = edge; });
     const reason = !routes || routed.some((flow) =>
       !acceptsRoute(routes.get(flow.id), flow, limits, obstacles, ROUTE_MARGIN)) ? 'graphSequenceClearance' : undefined;
-    return { reason, scope, units, elk, positioned, laneBoxes, frame, toLocal, flows: routed, limits, obstacles, routes };
+    return { reason, scope, units, elk, positioned, laneBoxes, bands, frame, toLocal, flows: routed, limits, obstacles, routes };
   }
 
   const room = state.room?.get(scope) ?? 0;
   let result = await candidate(room, room > 0);
   if (result.reason === 'graphSequenceClearance') result = await candidate(room + 24, true);
   if (result.reason) return { scope, reason: result.reason, elementId: failedFlow?.id };
-  const { positioned, laneBoxes, frame, flows: routed, routes } = result;
+  const { positioned, laneBoxes, bands, frame, flows: routed, routes } = result;
   if (diagnostics) diagnostics.push(result);
   if (routed.length) state.routing.set(scope, result);
   for (const [figure, box] of positioned) {
@@ -223,15 +238,20 @@ export async function arrangeScope(scope, diagram, state, gaps, diagnostics, ver
     });
     else state.boxes.set(figure, world);
   }
+  for (const [figure, { lane }] of units) {
+    if (!lane || !(figure.expanded || typeIs(modelOf(figure), 'bpmn:Gateway'))) continue;
+    const box = toLocal(positioned.get(figure));
+    // Store the band relative to its unit so it follows later scope and pool moves.
+    state.labelBands.set(figure, translate(toLocal(bands.get(lane)), { x: -box.x, y: -box.y }));
+  }
   for (const [lane, box] of laneBoxes) state.boxes.set(lane, toLocal(box));
   if (scope.kind !== 'root') state.boxes.set(scope, toLocal(frame));
   const pairs = [...positioned];
   if (pairs.some(([figure, box], index) => pairs.slice(index + 1).some(([other, otherBox]) =>
     figure.host !== other && other.host !== figure && intersects(box, otherBox))) ||
     [...units.values()].some(({ lane, parts }) => parts.some(([figure]) =>
-      !contains(lane ? laneBoxes.get(lane) : frame, positioned.get(figure)) ||
-      (figure.host && (!intersects(positioned.get(figure.host), positioned.get(figure)) ||
-        (laneOf(figure) && laneOf(figure) !== lane))))) ||
+      !contains(lane ? bands.get(lane) : frame, positioned.get(figure)) ||
+      (figure.host && !intersects(positioned.get(figure.host), positioned.get(figure))))) ||
     routed.some(({ back, source, target }) => !back && right(toLocal(source)) > toLocal(target).x)) {
     return { scope, reason: 'collisions' };
   }

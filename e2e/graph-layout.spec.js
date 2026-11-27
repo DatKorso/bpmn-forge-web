@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
+import { nestedLaneVariant } from '../test/helpers/nested-lanes.js';
 import { readDiagram as loadModel } from '../test/helpers/read-fixture.js';
 import { cutsInterior, expandObstacle } from '../src/route-flows.js';
 import { modelOrder } from '../src/graph-layout/model-order.js';
@@ -135,6 +136,79 @@ test('graph preview, atomic undo and redo, model order, and export/reopen', asyn
   await expectNoChange(page);
   expect(await readDiagram(page, await downloadDiagram(page))).toEqual(aligned);
   await page.screenshot({ path: testInfo.outputPath('graph-result.png') });
+});
+
+async function nestedLaneRelations(download) {
+  const diagram = await loadModel(await fileContent(download));
+  const walk = (set) => [set.id, (set.lanes ?? []).map((lane) => [
+    lane.id, (lane.flowNodeRef ?? []).map(({ id }) => id), lane.childLaneSet && walk(lane.childLaneSet)
+  ])];
+  const pool = diagram.figures.find(({ id }) => id === 'Pool');
+  return { lanes: pool.model.processRef.laneSets.map(walk), ...await semantics(download) };
+}
+
+for (const vertical of [false, true]) {
+  const orientation = vertical ? 'vertical' : 'horizontal';
+  test(`nested ${orientation} lanes survive cancel, undo, redo and reopening`, async ({ page }) => {
+    const xml = await readFile(fixture('graph-layout/nested-lanes'), 'utf8');
+    const filename = `nested-${orientation}.bpmn`;
+    await page.goto('/');
+    await openXml(page, filename, nestedLaneVariant(xml, { vertical, collaboration: !vertical, reverseDi: vertical }));
+    for (const id of ['Operations', 'Preparation', 'Desk', 'Empty', 'Split', 'Timer']) {
+      await expect(shape(page, id).locator('.djs-visual')).toBeVisible();
+    }
+    const before = await downloadDiagram(page);
+    const original = await readDiagram(page, before);
+    const relations = await nestedLaneRelations(before);
+
+    await graphButton(page).click();
+    await expect(preview(page)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(preview(page)).toBeHidden();
+    await expect(undoButton(page)).toBeDisabled();
+    expect(await readDiagram(page, await downloadDiagram(page))).toEqual(original);
+
+    await graphButton(page).click();
+    await applyPreview(page);
+    await expect(summary(page)).toHaveText('Выравнивание выполнено');
+    const after = await downloadDiagram(page);
+    const aligned = await readDiagram(page, after);
+    expect(aligned.shapes.Desk).not.toEqual(original.shapes.Desk);
+    expect(aligned.routes.Handoff).not.toEqual(original.routes.Handoff);
+    if (!vertical) expect(aligned.routes.Delivery).not.toEqual(original.routes.Delivery);
+    expect(aligned.routes.Link).not.toEqual(original.routes.Link);
+    expect(await nestedLaneRelations(after)).toEqual(relations);
+    await expectNoChange(page);
+
+    await undoButton(page).click();
+    expect(await readDiagram(page, await downloadDiagram(page))).toEqual(original);
+    await expect(undoButton(page)).toBeDisabled();
+    await redoButton(page).click();
+    expect(await readDiagram(page, await downloadDiagram(page))).toEqual(aligned);
+    await reopen(page, after);
+    await expectNoChange(page);
+    const reopened = await downloadDiagram(page);
+    expect(await readDiagram(page, reopened)).toEqual(aligned);
+    expect(await nestedLaneRelations(reopened)).toEqual(relations);
+    await expect(undoButton(page)).toBeDisabled();
+  });
+}
+
+test('missing child lane DI names the lane and leaves geometry and undo untouched', async ({ page }) => {
+  const xml = (await readFile(fixture('graph-layout/nested-lanes'), 'utf8'))
+    .replace(/<bpmndi:BPMNShape id="Empty_di"[\s\S]*?<\/bpmndi:BPMNShape>/, '');
+  await page.goto('/');
+  await openXml(page, 'missing-child-lane.bpmn', xml);
+  const original = await readDiagram(page, await downloadDiagram(page));
+
+  await graphButton(page).click();
+  await expect(summary(page)).toHaveText('Не удалось выровнять');
+  await expect(preview(page)).toBeHidden();
+  await page.getByRole('button', { name: 'Подробнее' }).click();
+  await expect(page.locator('#alignment-result')).toContainText('(Empty)');
+  await page.keyboard.press('Escape');
+  await expect(undoButton(page)).toBeDisabled();
+  expect(await readDiagram(page, await downloadDiagram(page))).toEqual(original);
 });
 
 test('exports both shortcuts with 16 pixels of clearance from foreign tasks', async ({ page }) => {

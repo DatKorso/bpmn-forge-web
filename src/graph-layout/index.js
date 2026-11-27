@@ -32,15 +32,15 @@ export async function planGraphLayout(diagram, gaps, diagnostics, { allowMixedPo
 async function planDiagram(diagram, gaps, diagnostics, allowMixedPools, room) {
   const failure = (reason, scope = diagram.root, elementId) =>
     ({ boxes: new Map(), routes: new Map(), labelGateways: [], skipped: [], reason, scope, elementId });
-  const collaboration = inspectCollaboration(diagram);
-  const unsupported = collaboration?.reason ? collaboration : unsupportedGraph(diagram);
+  const structures = new Map([diagram.root, ...diagram.figures.filter(({ expanded, kind }) => expanded || kind === 'pool')]
+    .map((scope) => [scope, captureStructure(scope)]));
+  const collaboration = inspectCollaboration(diagram, structures);
+  const unsupported = collaboration?.reason ? collaboration : unsupportedGraph(diagram, structures);
   if (unsupported) return failure(unsupported.reason, unsupported.scope, unsupported.elementId);
   if (!allowMixedPools && collaboration?.pools.some(({ horizontal }) => horizontal === false) &&
       collaboration.pools.some(({ horizontal }) => horizontal !== false)) {
     return failure('graphMixedOrientation');
   }
-  const structures = new Map([diagram.root, ...diagram.figures.filter(({ expanded, kind }) => expanded || kind === 'pool')]
-    .map((scope) => [scope, captureStructure(scope)]));
   if (collaboration?.extended) {
     const arranged = await arrangeCollaboration(diagram, collaboration, structures, gaps, diagnostics, recordGraphTiming, room);
     if (arranged.reason) return failure(arranged.reason, arranged.scope, arranged.elementId);
@@ -57,7 +57,13 @@ async function planDiagram(diagram, gaps, diagnostics, allowMixedPools, room) {
     structures,
     sequenceByModel: new Map(diagram.edges.map((edge) => [modelOf(edge), edge]))
   };
-  const state = { boxes: new Map(diagram.figures.map((figure) => [figure, figure.box])), routes: new Map(), routing: new Map(), room };
+  const state = {
+    boxes: new Map(diagram.figures.map((figure) => [figure, figure.box])),
+    routes: new Map(),
+    routing: new Map(),
+    labelBands: new Map(),
+    room
+  };
   const localStart = performance.now();
   const passive = pool && isPassivePool(diagram.figures, structures.get(pool));
   if (passive) localizePassivePool(pool, diagram.figures, state);

@@ -46,9 +46,6 @@ export function fixedLabels(figures, state) {
   const labelFailure = (gateway) => ({ reason: 'graphGatewayLabel', scope: gateway.scope, elementId: gateway.id });
   for (const gateway of gateways) {
     const containers = new Set(ancestry(gateway));
-    for (let figure = gateway; figure; figure = figure.parent) {
-      for (let lane = figure.lane; lane?.kind === 'lane'; lane = lane.parent) containers.add(lane);
-    }
     const obstacles = figures.filter((figure) => figure !== gateway).flatMap((figure) => {
       const box = routingBox(figure, state.boxes.get(figure));
       if (!isFrame(figure) || (figure.kind !== 'lane' && !containers.has(figure))) return [box];
@@ -57,6 +54,10 @@ export function fixedLabels(figures, state) {
     const neighbors = [...labels].filter(([figure]) => figure !== gateway).flatMap(([, boxes]) => boxes);
     const gatewayBox = state.boxes.get(gateway);
     const limits = [...containers].map((frame) => state.boxes.get(frame));
+    for (let figure = gateway; figure; figure = figure.parent) {
+      const band = state.labelBands.get(figure);
+      if (band) limits.push(translate(band, state.boxes.get(figure)));
+    }
     const placed = [];
     for (const label of labels.get(gateway)) {
       const occupied = [...obstacles, ...neighbors, ...placed, ...sequenceLabels];

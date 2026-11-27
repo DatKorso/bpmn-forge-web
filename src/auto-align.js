@@ -21,7 +21,7 @@ const SKIP_REASONS = {
   graphLaneOrientation: 'Ориентация дорожки отличается от ориентации её пула',
   graphNoPools: 'На активной плоскости не отображается ни одна рамка участника',
   graphGroup: 'Экспериментальная раскладка пока не поддерживает группы',
-  graphNestedLanes: 'Экспериментальная раскладка пока не поддерживает вложенные дорожки',
+  graphNestedLanes: 'Экспериментальная раскладка поддерживает вложенные дорожки только в процессе пула на плоскости коллаборации',
   graphMissingLane: 'В пуле с дорожками каждый узел должен принадлежать дорожке',
   graphIncomplete: 'Геометрия активной плоскости не соответствует элементам BPMN',
   graphOwnership: 'Принадлежность фигуры пулу, подпроцессу или дорожке неоднозначна',
@@ -106,7 +106,7 @@ function snapshot(root, shapes, elementRegistry, graph = false) {
     figure.header = ['pool', 'lane'].includes(figure.kind) ? LANE_INDENTATION : 0;
     figure.horizontal = laneDirections.get(figure) ?? orientation(figure.kind === 'pool' ? element : scope);
 
-    if (figure.kind === 'node') {
+    if (!graph && figure.kind === 'node') {
       if (!laneCache.has(scope)) laneCache.set(scope, collectLanes(scope));
       const lane = laneCache.get(scope).find((candidate) => element.businessObject.lanes?.includes(candidate.businessObject));
       figure.lane = byElement.get(lane);

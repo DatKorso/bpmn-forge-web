@@ -1,4 +1,5 @@
 import { center } from '../layout.js';
+import { readLaneTree } from './lane-tree.js';
 import { modelOf, modelOrder, processOf, typeIs } from './model-order.js';
 
 const failure = (reason, scope, model) => ({ reason, scope, elementId: model?.id });
@@ -46,23 +47,17 @@ function validMessageEndpoint(model, source) {
     (!typeIs(model, 'bpmn:BoundaryEvent') || (!source && definitions.length > 0));
 }
 
-export function unsupportedGraph(diagram) {
+export function unsupportedGraph(diagram, structures) {
   const byModel = new Map(diagram.figures.map((figure) => [modelOf(figure), figure]));
+  const isCollaboration = typeIs(modelOf(diagram.root), 'bpmn:Collaboration');
   function check(model, scope) {
     const group = model?.artifacts?.find((artifact) => typeIs(artifact, 'bpmn:Group'));
     if (group) return failure('graphGroup', scope, group);
-    const lanes = modelOrder(scope).lanes;
-    const nested = lanes.find((lane) => lane.childLaneSet);
-    if (nested) return failure('graphNestedLanes', scope, nested);
-    if (scope?.kind === 'pool' && lanes.length) {
-      const owned = new Set();
-      for (const member of lanes.flatMap((lane) => lane.flowNodeRef ?? [])) {
-        if (owned.has(member)) return failure('graphOwnership', scope, member);
-        owned.add(member);
-      }
-      const unassigned = model.flowElements?.find((node) => typeIs(node, 'bpmn:FlowNode') && !owned.has(node));
-      if (unassigned) return failure('graphMissingLane', scope, unassigned);
+    const tree = laneTree(scope, structures);
+    if (tree.nested && !(isCollaboration && scope.kind === 'pool')) {
+      return failure('graphNestedLanes', scope, tree.nested);
     }
+    if (tree.issue) return tree.issue;
     for (const child of model?.flowElements ?? []) {
       const figure = byModel.get(child);
       if (!figure?.expanded || !typeIs(child, 'bpmn:SubProcess')) continue;
@@ -76,7 +71,11 @@ export function unsupportedGraph(diagram) {
   }
 }
 
-export function inspectCollaboration(diagram) {
+function laneTree(scope, structures) {
+  return structures?.get(scope)?.laneTree ?? readLaneTree(scope, modelOrder(scope).nodes);
+}
+
+export function inspectCollaboration(diagram, structures) {
   const root = modelOf(diagram.root);
   if (!typeIs(root, 'bpmn:Collaboration')) return;
 
@@ -179,17 +178,19 @@ export function inspectCollaboration(diagram) {
   const order = new Map();
   const auxiliary = [];
   const seen = new Set(messageModels);
-  function shape(model, scope, pool, required = true) {
+  function shape(model, scope, pool, { required = true, parentLane } = {}) {
     const figure = figures.get(model);
     const entries = di.get(model);
     seen.add(model);
     if (!figure && !required && !entries?.length) return;
     if (!figure || entries?.length !== 1 || !isShape(entries[0]) || !validShape(entries[0].bounds) ||
         !validShape(figure.box)) return failure('graphIncomplete', scope, model);
-    const expectedParent = scope === rootScope ? root : processOf(scope);
+    const expectedParent = parentLane ?? (scope === rootScope ? root : processOf(scope));
     const parent = typeIs(model, 'bpmn:Lane') ? model.$parent?.$parent : model.$parent;
     const wrongExpansion = typeIs(model, 'bpmn:SubProcess') && Boolean(entries[0].isExpanded) !== figure.expanded;
-    if (parent !== expectedParent || figure.scope !== scope || structuralScope(figure) !== scope || wrongExpansion) {
+    const wrongLaneParent = typeIs(model, 'bpmn:Lane') && figure.parent !== (parentLane ? figures.get(parentLane) : scope);
+    if (parent !== expectedParent || figure.scope !== scope || structuralScope(figure) !== scope || wrongExpansion ||
+        wrongLaneParent) {
       return failure('graphOwnership', scope, model);
     }
     owner.set(figure, pool);
@@ -230,36 +231,45 @@ export function inspectCollaboration(diagram) {
       if (issue) return issue;
     }
   }
-  function process(model, scope, pool) {
-    const { nodes, lanes, edges } = modelOrder(scope);
-    const laneOf = new Map();
-    const members = new Set(nodes);
+  function checkLanes(scope, pool) {
+    const { nodes } = structures?.get(scope) ?? modelOrder(scope);
+    const tree = laneTree(scope, structures);
+    if (tree.nested && scope !== pool) return failure('graphNestedLanes', scope, tree.nested);
+    if (tree.issue) return tree.issue;
+    const { lanes, parents, memberships } = tree;
     for (const lane of lanes) {
-      const issue = shape(lane, scope, pool);
+      const issue = shape(lane, scope, pool, { parentLane: parents.get(lane) });
       if (issue) return issue;
-      if (lane.childLaneSet) return failure('graphNestedLanes', scope, lane);
-      if ((di.get(lane)[0].isHorizontal !== false) !== (pool.horizontal !== false)) {
+      if ((di.get(lane)[0].isHorizontal !== false) !== (di.get(modelOf(pool))[0].isHorizontal !== false)) {
         return failure('graphLaneOrientation', scope, lane);
       }
-      for (const member of lane.flowNodeRef ?? []) {
-        if (!members.has(member) || laneOf.has(member)) return failure('graphOwnership', scope, member);
-        laneOf.set(member, figures.get(lane));
-      }
     }
+    const unassigned = lanes.length && nodes.find((node) =>
+      typeIs(node, 'bpmn:FlowNode') && !typeIs(node, 'bpmn:BoundaryEvent') && !memberships.has(node));
+    if (unassigned) return failure('graphMissingLane', scope, unassigned);
+  }
+
+  function checkBoundaryEvent(node, scope) {
+    const figure = figures.get(node);
+    const host = figures.get(node.attachedToRef);
+    if (!figure) return failure('graphIncomplete', scope, node);
+    if (!typeIs(node.attachedToRef, 'bpmn:Activity') || !host || host !== figure.host || host.scope !== scope) {
+      return failure('graphOwnership', scope, node);
+    }
+  }
+
+  function process(model, scope, pool) {
+    const { nodes, edges } = structures?.get(scope) ?? modelOrder(scope);
+    const laneIssue = checkLanes(scope, pool);
+    if (laneIssue) return laneIssue;
     for (const member of nodes) {
-      const issue = shape(member, scope, pool, !typeIs(member, 'bpmn:DataObject'));
+      const issue = shape(member, scope, pool, { required: !typeIs(member, 'bpmn:DataObject') });
       if (issue) return issue;
       const figure = figures.get(member);
       if (!figure) continue;
       if (typeIs(member, 'bpmn:BoundaryEvent')) {
-        const host = figures.get(member.attachedToRef);
-        if (!typeIs(member.attachedToRef, 'bpmn:Activity') || !host || host !== figure.host || host.scope !== scope ||
-            (laneOf.has(member) && laneOf.get(member) !== laneOf.get(member.attachedToRef))) {
-          return failure('graphOwnership', scope, member);
-        }
-      } else if (typeIs(member, 'bpmn:FlowNode') && (figure.lane !== laneOf.get(member) ||
-          (lanes.length && !laneOf.has(member)))) {
-        return failure('graphMissingLane', scope, member);
+        const issue = checkBoundaryEvent(member, scope);
+        if (issue) return issue;
       }
       for (const association of [...member.dataInputAssociations ?? [], ...member.dataOutputAssociations ?? []]) {
         const issue = connection(association, scope);
@@ -295,6 +305,15 @@ export function inspectCollaboration(diagram) {
       if (!seen.has(model)) return failure('graphOwnership', edge.source?.scope ?? rootScope, model);
     }
   } else {
+    for (const pool of pools) {
+      const issue = checkLanes(pool, pool);
+      if (issue) return issue;
+      for (const node of structures?.get(pool).nodes ?? modelOrder(pool).nodes) {
+        if (!typeIs(node, 'bpmn:BoundaryEvent')) continue;
+        const issue = checkBoundaryEvent(node, pool);
+        if (issue) return issue;
+      }
+    }
     // The isolated planner retains its historical auxiliary-edge handling.
     for (const figure of diagram.figures) {
       const model = modelOf(figure);

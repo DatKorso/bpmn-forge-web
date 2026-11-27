@@ -8,8 +8,8 @@ import { modelOf, typeIs } from './model-order.js';
 
 export const isDataFlow = (edge) => ['bpmn:DataInputAssociation', 'bpmn:DataOutputAssociation'].includes(edge.type);
 
-export function isPassivePool(figures, { nodes, edges }) {
-  return !edges.length && nodes.every((node) => typeIs(node, 'bpmn:DataObject')) &&
+export function isPassivePool(figures, { nodes, edges, laneTree }) {
+  return !laneTree.nested && !edges.length && nodes.every((node) => typeIs(node, 'bpmn:DataObject')) &&
     figures.every((figure) => figure.kind === 'pool' || figure.kind === 'lane' || isAnnotation(figure));
 }
 
@@ -23,7 +23,13 @@ export function localizePassivePool(pool, figures, state) {
 export async function arrangeCollaboration(diagram, collaboration, structures, gaps, diagnostics, timing, room) {
   const localStart = performance.now();
   const { pools, owner, messages, auxiliary, order } = collaboration;
-  const state = { boxes: new Map(diagram.figures.map((figure) => [figure, figure.box])), routes: new Map(), routing: new Map(), room };
+  const state = {
+    boxes: new Map(diagram.figures.map((figure) => [figure, figure.box])),
+    routes: new Map(),
+    routing: new Map(),
+    labelBands: new Map(),
+    room
+  };
   const figures = diagram.figures.toSorted((a, b) => order.get(a) - order.get(b));
   const members = Map.groupBy(figures.filter((figure) => !isAnnotation(figure)), (figure) => owner.get(figure));
   const edges = Map.groupBy(diagram.edges, ({ source }) => owner.get(source));

@@ -88,7 +88,8 @@ test('packs lane bands from ELK rows without using original lane geometry', () =
   const geometry = new Map([
     ['0', { x: 0, y: 10 }], ['1', { x: 140, y: 10 }], ['2', { x: 10, y: 0 }]
   ]);
-  const { positioned, laneBoxes } = packRows(units, [first, second], geometry, 30, graphGaps);
+  const children = new Map([[undefined, [first, second]]]);
+  const { positioned, laneBoxes } = packRows(units, children, geometry, 30, graphGaps);
   assert.equal(positioned.get(figures[0]).y, positioned.get(figures[1]).y);
   assert.ok(positioned.get(figures[2]).y >= laneBoxes.get(second).y);
   assert.equal(laneBoxes.get(first).height, laneBoxes.get(second).y);
@@ -228,11 +229,11 @@ test('refuses atomically when a note cannot fit without changing process geometr
   assert.equal(plan.routes.size, 0);
 });
 
-test('refuses groups, nested lanes and missing lane membership atomically', async () => {
+test('refuses groups, missing child lane DI and missing lane membership atomically', async () => {
   const xml = await readFile(new URL('./fixtures/tight-pool.bpmn', import.meta.url), 'utf8');
   const cases = [
     [await readDiagram(xml.replace('</bpmn:process>', '<bpmn:group id="G" /></bpmn:process>')), 'graphGroup'],
-    [await readDiagram(xml.replace('</bpmn:lane>', '<bpmn:childLaneSet id="Child"><bpmn:lane id="Nested" /></bpmn:childLaneSet></bpmn:lane>')), 'graphNestedLanes'],
+    [await readDiagram(xml.replace('</bpmn:lane>', '<bpmn:childLaneSet id="Child"><bpmn:lane id="Nested" /></bpmn:childLaneSet></bpmn:lane>')), 'graphIncomplete'],
     [await readDiagram(xml.replace('<bpmn:flowNodeRef>Start</bpmn:flowNodeRef>', '')), 'graphMissingLane']
   ];
   for (const [diagram, reason] of cases) {
