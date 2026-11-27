@@ -1,10 +1,10 @@
 ---
 gsd_state_version: "1.0"
 status: unknown
-last_updated: "2026-11-26T10:52:48.109Z"
-last_activity: 2026-11-26
-last_activity_desc: "Completed quick task 261126-is5: Improve graph layout clearance, gateway labels and linked annotations"
-state_head: e7d728b460e1b9f7a8835a65b8f7d681e239e1eb
+last_updated: "2026-11-27T09:12:01.210Z"
+last_activity: 2026-11-27
+last_activity_desc: "Completed quick task 261127-gqv: Support nested lanes in graph layout"
+state_head: 4ae5b8c5430e7472c8ec375b627a27d8a430b6a7
 ---
 
 # Project State
@@ -17,7 +17,7 @@ See [.planning/PROJECT.md](PROJECT.md) for the baseline established on 2026-11-2
 
 **Current focus:** Project baseline established. Milestone planning is deferred.
 
-Last activity: 2026-11-26 - Completed quick task 261126-is5: Improve graph layout clearance, gateway labels and linked annotations
+Last activity: 2026-11-27 - Completed quick task 261127-gqv: Support nested lanes in graph layout
 
 ### Quick Tasks Completed
 
@@ -42,3 +42,4 @@ Last activity: 2026-11-26 - Completed quick task 261126-is5: Improve graph layou
 | 261123-dif | Expand ELK beta layout to collaborations | 2026-11-23 | 4c532d3 | [261123-dif-expand-elk-beta-layout-to-collaborations](./quick/261123-dif-expand-elk-beta-layout-to-collaborations/) |
 | 261123-fk5 | Support mixed orientation in ELK layout | 2026-11-23 | c68e7c1 | [261123-fk5-support-mixed-orientation-in-elk-layout](./quick/261123-fk5-support-mixed-orientation-in-elk-layout/) |
 | 261126-is5 | Improve graph layout clearance, gateway labels and linked annotations | 2026-11-26 | e7d728b | [261126-is5-improve-graph-layout-clearance-labels-an](./quick/261126-is5-improve-graph-layout-clearance-labels-an/) |
+| 261127-gqv | Support nested lanes in graph layout | 2026-11-27 | 4ae5b8c | [261127-gqv-support-nested-lanes-in-graph-layout](./quick/261127-gqv-support-nested-lanes-in-graph-layout/) |
